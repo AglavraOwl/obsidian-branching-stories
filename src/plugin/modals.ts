@@ -69,7 +69,10 @@ export class NameModal extends Modal {
   private result: string | null = null;
   private resolve!: (v: string | null) => void;
 
-  constructor(app: App, private opts: { title: string; placeholder?: string; submitLabel: string }) {
+  constructor(
+    app: App,
+    private opts: { title: string; placeholder?: string; submitLabel: string; initial?: string; allowEmpty?: boolean },
+  ) {
     super(app);
   }
 
@@ -84,9 +87,10 @@ export class NameModal extends Modal {
     this.setTitle(this.opts.title);
     const input = contentEl.createEl("input", { type: "text", cls: "bs-name-input" });
     input.placeholder = this.opts.placeholder ?? "";
+    input.value = this.opts.initial ?? "";
     const submit = (): void => {
       const v = input.value.trim();
-      if (!v) return;
+      if (!v && !this.opts.allowEmpty) return;
       this.result = v;
       this.close();
     };
@@ -99,7 +103,10 @@ export class NameModal extends Modal {
     new Setting(contentEl)
       .addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
       .addButton((b) => b.setButtonText(this.opts.submitLabel).setCta().onClick(submit));
-    window.setTimeout(() => input.focus(), 0);
+    window.setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 0);
   }
 
   onClose(): void {
@@ -209,6 +216,56 @@ export class ChoiceModal<T> extends FuzzySuggestModal<T> {
     super.onClose();
     // onChooseItem runs after onClose; resolve on the next tick.
     window.setTimeout(() => this.resolve(this.chosen), 0);
+  }
+}
+
+/** Progress with a cancel button, for long batches such as summaries. */
+export class ProgressModal extends Modal {
+  private bar!: HTMLProgressElement;
+  private label!: HTMLElement;
+  private finished = false;
+
+  constructor(
+    app: App,
+    private opts: { title: string; total: number; onCancel: () => void },
+  ) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    this.setTitle(this.opts.title);
+    this.label = contentEl.createEl("p", { text: "Starting…" });
+    this.bar = contentEl.createEl("progress");
+    this.bar.max = this.opts.total;
+    this.bar.value = 0;
+    this.bar.addClass("bs-progress");
+    new Setting(contentEl).addButton((b) =>
+      b.setButtonText("Cancel").onClick(() => {
+        this.opts.onCancel();
+        this.close();
+      }),
+    );
+  }
+
+  update(done: number, label: string): void {
+    if (this.finished) return;
+    this.bar.value = done;
+    this.label.setText(label);
+  }
+
+  finish(): void {
+    this.finished = true;
+    this.close();
+  }
+
+  onClose(): void {
+    // Closing with Escape counts as cancel unless the work finished.
+    if (!this.finished) {
+      this.finished = true;
+      this.opts.onCancel();
+    }
+    this.contentEl.empty();
   }
 }
 

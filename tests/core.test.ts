@@ -125,6 +125,7 @@ describe("tree index", () => {
     starred: false,
     label: "",
     title: id,
+    model: "",
   });
 
   // root -> a1 (v1) , a2 (v2), a2r (regen of a2) ; a2 -> b1, b2

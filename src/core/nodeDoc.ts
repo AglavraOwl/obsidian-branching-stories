@@ -14,6 +14,8 @@ export interface NodeFrontmatter {
   settings?: { [k: string]: YamlValue };
   usage?: { [k: string]: YamlValue };
   summary_hash?: string;
+  /** Hash of the summary text as the plugin wrote it; a mismatch means the author edited it. */
+  summary_check?: string;
   summary_locked?: boolean;
   starred?: boolean;
   label?: string;
@@ -83,6 +85,7 @@ export function serializeFrontmatter(fm: NodeFrontmatter): string {
     settings: fm.settings,
     usage: fm.usage,
     summary_hash: fm.summary_hash,
+    summary_check: fm.summary_check,
     summary_locked: fm.summary_locked,
     starred: fm.starred,
     label: fm.label,

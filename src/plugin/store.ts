@@ -95,11 +95,15 @@ export class StoryStore {
       starred: fm.starred === true,
       label: typeof fm.label === "string" ? fm.label : "",
       title: file.basename.slice(id.length).trim(),
+      model: typeof fm.model === "string" ? fm.model : "",
     };
   }
 
   refreshFile(file: TFile): void {
+    const before = this.index.getByPath(file.path);
     const meta = this.metaFromFile(file);
+    if (!meta && !before) return; // not a node and never was: nothing to tell anyone
+    if (meta && before && JSON.stringify(meta) === JSON.stringify(before)) return;
     if (meta) this.index.upsert(meta);
     else this.index.removePath(file.path);
     this.emit();

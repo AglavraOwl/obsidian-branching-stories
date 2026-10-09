@@ -15,6 +15,8 @@ export interface NodeMeta {
   label: string;
   /** Title part of the file name (for pickers). */
   title: string;
+  /** Model that produced the output (empty if unknown). */
+  model: string;
 }
 
 export interface Position {
@@ -118,6 +120,13 @@ export class TreeIndex {
     return [...set].map((k) => this.nodes.get(k)!).sort(byCreated);
   }
 
+  /** Starred nodes of a story. */
+  starredIn(story: string): NodeMeta[] {
+    const out: NodeMeta[] = [];
+    for (const n of this.nodes.values()) if (n.story === story && n.starred) out.push(n);
+    return out;
+  }
+
   /** Nodes of a story that have no parent (normally just one). */
   rootsOf(story: string): NodeMeta[] {
     const out: NodeMeta[] = [];
@@ -206,7 +215,7 @@ export class TreeIndex {
    * Landing node when moving to a prompt version: the member (original or
    * regeneration) that has the biggest continuation, else the original.
    */
-  private preferredMember(original: NodeMeta): NodeMeta {
+  preferredMember(original: NodeMeta): NodeMeta {
     const group = this.regenerations(original);
     let best = original;
     let bestCount = -1;

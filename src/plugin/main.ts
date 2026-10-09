@@ -1,4 +1,4 @@
-import { Notice, Plugin, SecretComponent, TFile, normalizePath, requestUrl } from "obsidian";
+import { Notice, Plugin, SecretComponent, TFile, WorkspaceLeaf, normalizePath, requestUrl } from "obsidian";
 import {
   ClientDeps,
   fetchModels,
@@ -11,7 +11,11 @@ import { StoryOverrides } from "../core/storyDoc";
 import { registerCommands } from "./commands";
 import { EffectiveConfig, GenerationController } from "./generate";
 import { BSSettings, BSSettingTab, mergeSettings } from "./settings";
+import { HeaderActions } from "./headerActions";
+import { navBarExtension, navBarPostProcessor, refreshNavBars } from "./navbar";
+import { SIDEBAR_VIEW_TYPE, StorySidebar } from "./sidebar";
 import { StoryStore } from "./store";
+import { SummaryService } from "./summaries";
 
 const LAST_ACTIVE_KEY = "branching-stories:last-active:";
 
@@ -19,6 +23,9 @@ export default class BranchingStoriesPlugin extends Plugin {
   settings!: BSSettings;
   store!: StoryStore;
   generation!: GenerationController;
+  summaries!: SummaryService;
+  private headerActions!: HeaderActions;
+  private uiTimer: number | null = null;
   private statusEl: HTMLElement | null = null;
 
   readonly clientDeps: ClientDeps = {
@@ -40,12 +47,24 @@ export default class BranchingStoriesPlugin extends Plugin {
     await this.loadSettings();
     this.store = new StoryStore(this.app);
     this.generation = new GenerationController(this);
+    this.summaries = new SummaryService(this);
+    this.headerActions = new HeaderActions(this);
 
     this.addSettingTab(new BSSettingTab(this.app, this));
     registerCommands(this);
 
     this.statusEl = this.addStatusBarItem();
-    this.store.onChange(() => this.refreshStatusBar());
+    this.store.onChange(() => {
+      this.refreshStatusBar();
+      this.scheduleUiRefresh();
+    });
+
+    this.registerView(SIDEBAR_VIEW_TYPE, (leaf) => new StorySidebar(leaf, this));
+    this.addRibbonIcon("git-branch", "Story sidebar", () => void this.activateSidebar());
+    this.registerEditorExtension(navBarExtension(this));
+    this.registerMarkdownPostProcessor(navBarPostProcessor(this));
+    this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.headerActions.syncAll()));
+    this.registerEvent(this.app.workspace.on("layout-change", () => this.headerActions.syncAll()));
 
     this.registerEvent(this.app.metadataCache.on("changed", (file) => this.store.refreshFile(file)));
     this.registerEvent(this.app.metadataCache.on("deleted", (file) => this.store.removePath(file.path)));
@@ -60,6 +79,7 @@ export default class BranchingStoriesPlugin extends Plugin {
       this.app.workspace.on("file-open", (file) => {
         this.rememberActive(file);
         this.refreshStatusBar();
+        this.headerActions.syncAll();
       }),
     );
 
@@ -76,7 +96,29 @@ export default class BranchingStoriesPlugin extends Plugin {
       this.store.rebuild();
       void this.generation.failStale();
       this.refreshStatusBar();
+      this.headerActions.syncAll();
     });
+  }
+
+  /** Redraw navigation bars and header buttons after the tree changed (debounced). */
+  private scheduleUiRefresh(): void {
+    if (this.uiTimer !== null) return;
+    this.uiTimer = window.setTimeout(() => {
+      this.uiTimer = null;
+      refreshNavBars(this);
+      this.headerActions.syncAll();
+    }, 120);
+  }
+
+  async activateSidebar(): Promise<void> {
+    const { workspace } = this.app;
+    let leaf: WorkspaceLeaf | null = workspace.getLeavesOfType(SIDEBAR_VIEW_TYPE)[0] ?? null;
+    if (!leaf) {
+      leaf = workspace.getRightLeaf(false);
+      if (!leaf) return;
+      await leaf.setViewState({ type: SIDEBAR_VIEW_TYPE, active: true });
+    }
+    await workspace.revealLeaf(leaf);
   }
 
   // ---- settings -------------------------------------------------------------------

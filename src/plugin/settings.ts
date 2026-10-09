@@ -14,12 +14,23 @@ export interface GenerationSettings {
   reasoning: boolean;
 }
 
+export interface SummarySettings {
+  /** true = summarize with the generation provider and model. */
+  useGenerationModel: boolean;
+  provider: ProviderKind;
+  model: string;
+}
+
 export interface BSSettings {
+  /** Bumped when a default changes in a way that needs migrating saved data. */
+  settingsVersion: number;
   storiesRoot: string;
   generation: GenerationSettings;
+  summary: SummarySettings;
   /** Most recent turns sent in full; 0 = send everything (no summaries). */
   recentTurns: number;
   maxContextTokens: number;
+  bookmarkSort: "created" | "size";
   providers: {
     lmstudio: { baseUrl: string };
     openrouter: { baseUrl: string; keySecretName: string; keyPlain: string };
@@ -28,7 +39,10 @@ export interface BSSettings {
   modelCache: Record<ProviderKind, { fetchedAt: number; models: ModelInfo[] }>;
 }
 
+export const SETTINGS_VERSION = 1;
+
 export const DEFAULT_SETTINGS: BSSettings = {
+  settingsVersion: SETTINGS_VERSION,
   storiesRoot: "Stories",
   generation: {
     provider: "openrouter",
@@ -38,8 +52,10 @@ export const DEFAULT_SETTINGS: BSSettings = {
     topP: null,
     reasoning: false,
   },
-  recentTurns: 0,
+  summary: { useGenerationModel: true, provider: "openrouter", model: "" },
+  recentTurns: 2,
   maxContextTokens: 32000,
+  bookmarkSort: "created",
   providers: {
     lmstudio: { baseUrl: "http://localhost:1234/v1" },
     openrouter: { baseUrl: "https://openrouter.ai/api/v1", keySecretName: "openrouter-api-key", keyPlain: "" },
@@ -54,10 +70,11 @@ export const DEFAULT_SETTINGS: BSSettings = {
 /** Merge saved data over the defaults (one level deep for the nested groups). */
 export function mergeSettings(saved: Partial<BSSettings> | null | undefined): BSSettings {
   const s = saved ?? {};
-  return {
+  const merged: BSSettings = {
     ...DEFAULT_SETTINGS,
     ...s,
     generation: { ...DEFAULT_SETTINGS.generation, ...(s.generation ?? {}) },
+    summary: { ...DEFAULT_SETTINGS.summary, ...(s.summary ?? {}) },
     providers: {
       lmstudio: { ...DEFAULT_SETTINGS.providers.lmstudio, ...(s.providers?.lmstudio ?? {}) },
       openrouter: { ...DEFAULT_SETTINGS.providers.openrouter, ...(s.providers?.openrouter ?? {}) },
@@ -65,6 +82,10 @@ export function mergeSettings(saved: Partial<BSSettings> | null | undefined): BS
     favorites: { ...DEFAULT_SETTINGS.favorites, ...(s.favorites ?? {}) },
     modelCache: { ...DEFAULT_SETTINGS.modelCache, ...(s.modelCache ?? {}) },
   };
+  // v0 (stage 0) had no summaries and sent every turn in full (recentTurns 0).
+  if ((s.settingsVersion ?? 0) < 1) merged.recentTurns = DEFAULT_SETTINGS.recentTurns;
+  merged.settingsVersion = SETTINGS_VERSION;
+  return merged;
 }
 
 export class BSSettingTab extends PluginSettingTab {
@@ -223,6 +244,70 @@ export class BSSettingTab extends PluginSettingTab {
     new Setting(containerEl).setName("LM Studio").setHeading();
     this.baseUrlSetting("lmstudio");
     this.fetchSetting("lmstudio");
+
+    // ---- context & summaries -------------------------------------------------
+    new Setting(containerEl).setName("Context and summaries").setHeading();
+
+    new Setting(containerEl)
+      .setName("Recent turns sent in full")
+      .setDesc("Older turns are sent as short summaries. 0 sends every turn in full (no summaries). Override per story with recent_turns in the story note.")
+      .addText((t) =>
+        t.setValue(String(s.recentTurns)).onChange(async (v) => {
+          const n = parseInt(v, 10);
+          if (Number.isFinite(n) && n >= 0) {
+            s.recentTurns = n;
+            await this.plugin.saveSettings();
+          }
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("Summarize with the generation model")
+      .setDesc("Turn off to use a separate, cheaper model for summaries.")
+      .addToggle((t) =>
+        t.setValue(s.summary.useGenerationModel).onChange(async (v) => {
+          s.summary.useGenerationModel = v;
+          await this.plugin.saveSettings();
+          this.display();
+        }),
+      );
+
+    if (!s.summary.useGenerationModel) {
+      new Setting(containerEl)
+        .setName("Summary provider")
+        .addDropdown((d) =>
+          d
+            .addOption("openrouter", PROVIDER_LABEL.openrouter)
+            .addOption("lmstudio", PROVIDER_LABEL.lmstudio)
+            .setValue(s.summary.provider)
+            .onChange(async (v) => {
+              s.summary.provider = v as ProviderKind;
+              await this.plugin.saveSettings();
+              this.display();
+            }),
+        );
+      new Setting(containerEl)
+        .setName("Summary model")
+        .addText((t) =>
+          t
+            .setPlaceholder("model slug")
+            .setValue(s.summary.model)
+            .onChange(async (v) => {
+              s.summary.model = v.trim();
+              await this.plugin.saveSettings();
+            }),
+        )
+        .addButton((b) =>
+          b.setButtonText("Choose…").onClick(async () => {
+            const picked = await pickModel(this.app, this.plugin, s.summary.provider);
+            if (picked) {
+              s.summary.model = picked;
+              await this.plugin.saveSettings();
+              this.display();
+            }
+          }),
+        );
+    }
 
     // ---- stories ------------------------------------------------------------
     new Setting(containerEl).setName("Stories").setHeading();

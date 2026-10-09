@@ -2,17 +2,29 @@ import { Notice, TFile, normalizePath } from "obsidian";
 import { PROVIDER_LABEL } from "../api/client";
 import { NODES_FOLDER, newStoryNote, STORY_ROOT_FILE } from "../core/storyDoc";
 import { NodeMeta } from "../core/tree";
-import { ChoiceModal, NameModal, PromptModal, TextViewModal } from "./modals";
+import {
+  compilePath,
+  goDown,
+  goStep,
+  goUp,
+  openNode,
+  pickRegen,
+  pickVersion,
+  setLabel,
+  toggleStar,
+} from "./actions";
 import type BranchingStoriesPlugin from "./main";
+import { NameModal, PromptModal, TextViewModal } from "./modals";
+import { SummaryCancelled } from "./summaries";
 
-interface Where {
+export interface Where {
   storyFolder: string;
   /** The open node, or undefined when the open note is the story root. */
   node?: NodeMeta;
   file: TFile;
 }
 
-function whereAmI(plugin: BranchingStoriesPlugin): Where | null {
+export function whereAmI(plugin: BranchingStoriesPlugin): Where | null {
   const file = plugin.app.workspace.getActiveFile();
   if (!file) return null;
   if (plugin.store.isStoryRoot(file)) {
@@ -23,37 +35,55 @@ function whereAmI(plugin: BranchingStoriesPlugin): Where | null {
   return node ? { storyFolder: node.story, node, file } : null;
 }
 
-async function open(plugin: BranchingStoriesPlugin, meta: NodeMeta | TFile): Promise<void> {
-  const file = meta instanceof TFile ? meta : plugin.store.fileFor(meta);
-  if (!file) {
-    new Notice("That note could not be found in the vault.");
+/** Prompt dialog, then generate a child of the open node (or the first node from the story root). */
+export async function newNode(plugin: BranchingStoriesPlugin, w: Where): Promise<void> {
+  const prompt = await new PromptModal(plugin.app, {
+    title: w.node ? "Next prompt" : "First prompt",
+    submitLabel: "Generate",
+    placeholder: "What happens next? You can link notes with [[Note name]] to include them.",
+  }).open();
+  if (!prompt) return;
+  await plugin.generation.run({ storyFolder: w.storyFolder, parent: w.node ?? null, prompt, regenOf: null });
+}
+
+export async function regenerate(plugin: BranchingStoriesPlugin, node: NodeMeta): Promise<void> {
+  if (plugin.generation.isGenerating(node)) {
+    new Notice("This node is still generating.");
     return;
   }
-  await plugin.app.workspace.getLeaf(false).openFile(file);
+  const file = plugin.store.fileFor(node);
+  if (!file) return;
+  const loaded = await plugin.store.load(file);
+  if (!loaded.sections.prompt.trim()) {
+    new Notice("This node has no prompt text to regenerate.");
+    return;
+  }
+  await plugin.generation.run({
+    storyFolder: node.story,
+    parent: plugin.store.index.parentOf(node) ?? null,
+    prompt: loaded.sections.prompt,
+    regenOf: plugin.store.index.originalId(node),
+    keep: loaded.sections.keep,
+  });
 }
 
-function positionText(plugin: BranchingStoriesPlugin, meta: NodeMeta): string {
-  const idx = plugin.store.index;
-  const v = idx.versionPosition(meta);
-  const r = idx.regenPosition(meta);
-  return r.total > 1 ? `version ${v.index} of ${v.total}, regeneration ${r.index} of ${r.total}` : `version ${v.index} of ${v.total}`;
-}
-
-function describeChild(plugin: BranchingStoriesPlugin, meta: NodeMeta): string {
-  const idx = plugin.store.index;
-  const v = idx.versionPosition(meta);
-  const r = idx.regenPosition(meta);
-  const below = idx.descendantCount(meta);
-  const parts = [`${meta.starred ? "★ " : ""}${meta.label || meta.title}`, `v${v.index}/${v.total}`];
-  if (r.total > 1) parts.push(`r${r.index}/${r.total}`);
-  if (below) parts.push(`${below} below`);
-  if (meta.status !== "done") parts.push(meta.status);
-  return parts.join(" · ");
-}
-
-async function chooseNode(plugin: BranchingStoriesPlugin, nodes: NodeMeta[], placeholder: string): Promise<NodeMeta | null> {
-  if (nodes.length === 1) return nodes[0];
-  return new ChoiceModal<NodeMeta>(plugin.app, nodes, (n) => describeChild(plugin, n), placeholder).openAndWait();
+export async function editAndRegenerate(plugin: BranchingStoriesPlugin, node: NodeMeta): Promise<void> {
+  const file = plugin.store.fileFor(node);
+  if (!file) return;
+  const loaded = await plugin.store.load(file);
+  const prompt = await new PromptModal(plugin.app, {
+    title: "Edit prompt (creates a new version)",
+    initial: loaded.sections.prompt,
+    submitLabel: "Generate",
+  }).open();
+  if (!prompt) return;
+  await plugin.generation.run({
+    storyFolder: node.story,
+    parent: plugin.store.index.parentOf(node) ?? null,
+    prompt,
+    regenOf: null,
+    keep: loaded.sections.keep,
+  });
 }
 
 export function registerCommands(plugin: BranchingStoriesPlugin): void {
@@ -97,58 +127,14 @@ export function registerCommands(plugin: BranchingStoriesPlugin): void {
       await plugin.ensureFolder(`${folder}/${NODES_FOLDER}`);
       const file = await app.vault.create(normalizePath(`${folder}/${STORY_ROOT_FILE}`), newStoryNote(safe));
       await app.workspace.getLeaf(false).openFile(file);
-      new Notice("Story created. Edit the system prompt and lore, then run \"New node from here\".");
+      new Notice('Story created. Edit the system prompt and lore, then run "New node from here".');
     },
   });
 
   // ---- generation -----------------------------------------------------------------
-  add("new-node", "New node from here", () => true, async (w) => {
-    const prompt = await new PromptModal(app, {
-      title: w.node ? "Next prompt" : "First prompt",
-      submitLabel: "Generate",
-      placeholder: "What happens next? You can link notes with [[Note name]] to include them.",
-    }).open();
-    if (!prompt) return;
-    await plugin.generation.run({ storyFolder: w.storyFolder, parent: w.node ?? null, prompt, regenOf: null });
-  });
-
-  add("regenerate", "Regenerate", (w) => !!w.node, async (w) => {
-    const node = w.node!;
-    if (plugin.generation.isGenerating(node)) {
-      new Notice("This node is still generating.");
-      return;
-    }
-    const loaded = await plugin.store.load(w.file);
-    if (!loaded.sections.prompt.trim()) {
-      new Notice("This node has no prompt text to regenerate.");
-      return;
-    }
-    await plugin.generation.run({
-      storyFolder: node.story,
-      parent: plugin.store.index.parentOf(node) ?? null,
-      prompt: loaded.sections.prompt,
-      regenOf: plugin.store.index.originalId(node),
-      keep: loaded.sections.keep,
-    });
-  });
-
-  add("edit-regenerate", "Edit prompt and regenerate", (w) => !!w.node, async (w) => {
-    const node = w.node!;
-    const loaded = await plugin.store.load(w.file);
-    const prompt = await new PromptModal(app, {
-      title: "Edit prompt (creates a new version)",
-      initial: loaded.sections.prompt,
-      submitLabel: "Generate",
-    }).open();
-    if (!prompt) return;
-    await plugin.generation.run({
-      storyFolder: node.story,
-      parent: plugin.store.index.parentOf(node) ?? null,
-      prompt,
-      regenOf: null,
-      keep: loaded.sections.keep,
-    });
-  });
+  add("new-node", "New node from here", () => true, (w) => newNode(plugin, w));
+  add("regenerate", "Regenerate", (w) => !!w.node, (w) => regenerate(plugin, w.node!));
+  add("edit-regenerate", "Edit prompt and regenerate", (w) => !!w.node, (w) => editAndRegenerate(plugin, w.node!));
 
   plugin.addCommand({
     id: "stop-generation",
@@ -170,42 +156,15 @@ export function registerCommands(plugin: BranchingStoriesPlugin): void {
       new Notice("Already at the story root.");
       return;
     }
-    const parent = plugin.store.index.parentOf(w.node);
-    if (parent) {
-      await open(plugin, parent);
-      return;
-    }
-    const root = plugin.store.storyRootFile(w.node.story);
-    if (root) await open(plugin, root);
+    await goUp(plugin, w.node);
   });
-
-  add("go-down", "Go to child node", () => true, async (w) => {
-    const idx = plugin.store.index;
-    const children = w.node ? idx.childrenOf(w.node) : idx.rootsOf(w.storyFolder);
-    if (!children.length) {
-      new Notice("No children yet. Use \"New node from here\".");
-      return;
-    }
-    const target = await chooseNode(plugin, children, "Continue to…");
-    if (target) await open(plugin, target);
-  });
-
-  const step = (id: string, name: string, kind: "version" | "regen", dir: -1 | 1): void => {
-    add(id, name, (w) => !!w.node, async (w) => {
-      const idx = plugin.store.index;
-      const target = kind === "version" ? idx.stepVersion(w.node!, dir) : idx.stepRegen(w.node!, dir);
-      if (!target) {
-        new Notice(`No ${dir < 0 ? "previous" : "next"} ${kind === "version" ? "prompt version" : "regeneration"}.`);
-        return;
-      }
-      await open(plugin, target);
-      new Notice(positionText(plugin, target), 2500);
-    });
-  };
-  step("prev-version", "Previous prompt version", "version", -1);
-  step("next-version", "Next prompt version", "version", 1);
-  step("prev-regen", "Previous regeneration", "regen", -1);
-  step("next-regen", "Next regeneration", "regen", 1);
+  add("go-down", "Go to child node", () => true, (w) => goDown(plugin, w.node ?? null, w.storyFolder));
+  add("prev-version", "Previous prompt version", (w) => !!w.node, (w) => goStep(plugin, w.node!, "version", -1));
+  add("next-version", "Next prompt version", (w) => !!w.node, (w) => goStep(plugin, w.node!, "version", 1));
+  add("prev-regen", "Previous regeneration", (w) => !!w.node, (w) => goStep(plugin, w.node!, "regen", -1));
+  add("next-regen", "Next regeneration", (w) => !!w.node, (w) => goStep(plugin, w.node!, "regen", 1));
+  add("pick-version", "Choose prompt version…", (w) => !!w.node, (w) => pickVersion(plugin, w.node!));
+  add("pick-regen", "Choose regeneration…", (w) => !!w.node, (w) => pickRegen(plugin, w.node!));
 
   add("last-active", "Go to the story's last active node", () => true, async (w) => {
     const id = plugin.lastActiveId(w.storyFolder);
@@ -214,7 +173,29 @@ export function registerCommands(plugin: BranchingStoriesPlugin): void {
       new Notice("No last active node recorded on this device for this story.");
       return;
     }
-    await open(plugin, meta);
+    await openNode(plugin, meta);
+  });
+
+  // ---- bookmarks, summaries, output --------------------------------------------------
+  add("toggle-star", "Toggle star on this node", (w) => !!w.node, (w) => toggleStar(plugin, w.node!));
+  add("set-label", "Set branch label…", (w) => !!w.node, (w) => setLabel(plugin, w.node!));
+
+  add("regenerate-summary", "Regenerate summary of this node", (w) => !!w.node, async (w) => {
+    try {
+      const data = await plugin.generation.loadStory(w.storyFolder);
+      await plugin.summaries.regenerate(w.node!, data.config);
+    } catch (e) {
+      if (e instanceof SummaryCancelled) return;
+      throw e;
+    }
+  });
+
+  add("compile-path", "Compile path to note", (w) => !!w.node, (w) => compilePath(plugin, w.node!));
+
+  plugin.addCommand({
+    id: "open-sidebar",
+    name: "Open story sidebar",
+    callback: () => void plugin.activateSidebar(),
   });
 
   // ---- context preview ------------------------------------------------------------------
@@ -228,7 +209,8 @@ export function registerCommands(plugin: BranchingStoriesPlugin): void {
       parent = w.node ?? null;
       prompt = "(your next prompt goes here)";
     }
-    const { config, context } = await plugin.generation.prepare(w.storyFolder, parent, prompt);
+    const data = await plugin.generation.loadStory(w.storyFolder);
+    const { config, context } = await plugin.generation.prepare(data, parent, prompt, "preview");
     const lines = [
       `${PROVIDER_LABEL[config.provider]} · ${config.model || "(no model selected)"}`,
       `Estimated input: ~${context.totalTokens} tokens`,

@@ -9,10 +9,13 @@ import {
   NODES_FOLDER,
   overridesFromFrontmatter,
   parseStoryBody,
+  StoryDoc,
 } from "../core/storyDoc";
+import { evaluateSummary, isUsable } from "../core/summary";
 import { NodeMeta } from "../core/tree";
 import type BranchingStoriesPlugin from "./main";
 import { ConfirmModal } from "./modals";
+import { SummaryCancelled } from "./summaries";
 
 export interface GenerateParams {
   storyFolder: string;
@@ -33,6 +36,13 @@ export interface EffectiveConfig {
   topP: number | null;
   reasoning: boolean;
   recentTurns: number;
+}
+
+export interface StoryData {
+  rootFile: TFile;
+  fm: Record<string, unknown>;
+  story: StoryDoc;
+  config: EffectiveConfig;
 }
 
 export interface PreparedContext {
@@ -80,11 +90,10 @@ export class GenerationController {
 
   // ---- context ------------------------------------------------------------------
 
-  async prepare(storyFolder: string, parent: NodeMeta | null, prompt: string): Promise<PreparedContext> {
-    const store = this.plugin.store;
-    const rootFile = store.storyRootFile(storyFolder);
+  /** Read the story's root note: its text sections, lore links and effective settings. */
+  async loadStory(storyFolder: string): Promise<StoryData> {
+    const rootFile = this.plugin.store.storyRootFile(storyFolder);
     if (!rootFile) throw new Error(`No ${storyFolder}/_story.md found for this story.`);
-
     const rootText = await this.app.vault.read(rootFile);
     const { frontmatter: fmText, body } = splitFrontmatter(rootText);
     let fm: Record<string, unknown> = {};
@@ -95,19 +104,53 @@ export class GenerationController {
         throw new Error(`The properties of ${rootFile.path} are not valid YAML: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
-    const story = parseStoryBody(body);
-    const config = this.plugin.effectiveConfig(overridesFromFrontmatter(fm));
+    return {
+      rootFile,
+      fm,
+      story: parseStoryBody(body),
+      config: this.plugin.effectiveConfig(overridesFromFrontmatter(fm)),
+    };
+  }
+
+  /**
+   * Assemble the context for a new node. In "send" mode missing or stale summaries of older turns
+   * are generated first; in "preview" mode nothing is sent and pending summaries are marked.
+   */
+  async prepare(
+    data: StoryData,
+    parent: NodeMeta | null,
+    prompt: string,
+    mode: "send" | "preview",
+  ): Promise<PreparedContext> {
+    const { rootFile, fm, story, config } = data;
+    const store = this.plugin.store;
+    const recentTurns = config.recentTurns > 0 ? config.recentTurns : Infinity;
+
+    if (mode === "send" && Number.isFinite(recentTurns)) {
+      await this.plugin.summaries.ensureForPath(parent, recentTurns, config);
+    }
 
     const turns: PathTurn[] = [];
     if (parent) {
       for (const meta of store.index.pathTo(parent)) {
         const loaded = await store.loadMeta(meta);
         if (!loaded) continue;
+        const state = evaluateSummary({
+          output: loaded.sections.output,
+          summary: loaded.sections.summary,
+          hash: loaded.frontmatter.summary_hash,
+          check: loaded.frontmatter.summary_check,
+          locked: loaded.frontmatter.summary_locked,
+        });
+        let summary: string | null = isUsable(state) ? loaded.sections.summary : null;
+        if (summary === null && mode === "preview" && loaded.sections.output.trim()) {
+          summary = "(summary will be generated when you send)";
+        }
         turns.push({
           id: meta.id,
           prompt: loaded.sections.prompt,
           output: loaded.sections.output,
-          summary: null,
+          summary,
           keep: loaded.sections.keep,
         });
       }
@@ -122,7 +165,7 @@ export class GenerationController {
       },
       turns,
       newPrompt: prompt,
-      recentTurns: config.recentTurns > 0 ? config.recentTurns : Infinity,
+      recentTurns,
       resolveNote: async (link) => {
         const dest = this.app.metadataCache.getFirstLinkpathDest(link.target, rootFile.path);
         if (!dest || dest.extension !== "md") return null;
@@ -145,18 +188,23 @@ export class GenerationController {
     const store = plugin.store;
     let prepared: PreparedContext;
     try {
-      prepared = await this.prepare(params.storyFolder, params.parent, params.prompt);
-      await plugin.ensureModel(prepared.config.provider, prepared.config.model);
+      const data = await this.loadStory(params.storyFolder);
+      await plugin.ensureModel(data.config.provider, data.config.model);
+      const key = plugin.providerConfig(data.config.provider);
+      if (data.config.provider === "openrouter" && !key.apiKey) {
+        throw new Error("OpenRouter API key is not set. Add it in the plugin settings.");
+      }
+      prepared = await this.prepare(data, params.parent, params.prompt, "send");
     } catch (e) {
+      if (e instanceof SummaryCancelled) {
+        new Notice("Cancelled. Nothing was generated.");
+        return null;
+      }
       this.report(e);
       return null;
     }
     const { config, context } = prepared;
     const provider = plugin.providerConfig(config.provider);
-    if (config.provider === "openrouter" && !provider.apiKey) {
-      this.report(new Error("OpenRouter API key is not set. Add it in the plugin settings."));
-      return null;
-    }
 
     if (context.totalTokens > plugin.settings.maxContextTokens) {
       const ok = await new ConfirmModal(this.app, {
@@ -216,6 +264,7 @@ export class GenerationController {
       starred: false,
       label: "",
       title,
+      model: config.model,
     };
     store.addMeta(meta);
     await this.app.workspace.getLeaf(false).openFile(file);

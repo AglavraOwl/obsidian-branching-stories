@@ -58,7 +58,7 @@ Extra frontmatter fields for this: `summary_hash` (hash of the Output), `summary
 - `_story.md` sections **System prompt**, **Lore** and **Pinned details** are sent with every turn, in full, never summarized. Notes linked in **Lore** or in the `lore:` property are included in full.
 - A `[[Note]]` or `[[Note#Heading]]` in a prompt includes that note (or just that section) for that turn and for the following N turns that are still sent in full. With recent turns set to 0 every turn is sent in full, so the link stays in effect down the branch.
 - To keep a note in effect on a branch for good, link it in that node's **Keep in mind** section.
-- Links are cleaned from the text the model sees (`[[Atka]]` becomes `Atka`). Frontmatter of linked notes is dropped. Links inside linked notes are not followed.
+- Links are cleaned from the text the model sees (`[[Atka]]` becomes `Atka`). The properties (frontmatter) of a linked note are sent too, as YAML above its text, because character profiles often keep their details there. A link to a heading sends only that section. Settings let you turn this off or leave out cosmetic properties (default: `cssclasses, banner, banner_icon`). Links inside linked notes are not followed.
 
 ## Trying it without a real model
 

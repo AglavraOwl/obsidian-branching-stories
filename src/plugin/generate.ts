@@ -2,7 +2,7 @@ import { Notice, TFile, normalizePath, parseYaml } from "obsidian";
 import { chatCompletion, ProviderError, ProviderKind, Usage } from "../api/client";
 import { BuiltContext, buildContext, PathTurn } from "../core/context";
 import { makeFileName, makeTimestamp, makeTitle, makeUniqueId, makeWikilink } from "../core/ids";
-import { extractHeadingSection, stripFrontmatter } from "../core/links";
+import { noteTextForContext } from "../core/links";
 import { NodeFrontmatter, NodeSections, NodeStatus, serializeNode, splitFrontmatter } from "../core/nodeDoc";
 import {
   linksFromLoreProperty,
@@ -169,12 +169,13 @@ export class GenerationController {
       resolveNote: async (link) => {
         const dest = this.app.metadataCache.getFirstLinkpathDest(link.target, rootFile.path);
         if (!dest || dest.extension !== "md") return null;
-        let text = stripFrontmatter(await this.app.vault.cachedRead(dest));
-        if (link.heading) {
-          const section = extractHeadingSection(text, link.heading);
-          if (!section) return null;
-          text = section;
-        }
+        const cfg = this.plugin.settings;
+        const text = noteTextForContext(await this.app.vault.cachedRead(dest), {
+          heading: link.heading,
+          includeFrontmatter: cfg.includeFrontmatter,
+          ignoreKeys: cfg.frontmatterIgnore.split(","),
+        });
+        if (text === null) return null;
         return { title: dest.basename, text };
       },
     });

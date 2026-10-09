@@ -30,6 +30,10 @@ export interface BSSettings {
   /** Most recent turns sent in full; 0 = send everything (no summaries). */
   recentTurns: number;
   maxContextTokens: number;
+  /** Send the properties (frontmatter) of linked notes, not just their text. */
+  includeFrontmatter: boolean;
+  /** Comma-separated property names left out of linked notes. */
+  frontmatterIgnore: string;
   bookmarkSort: "created" | "size";
   providers: {
     lmstudio: { baseUrl: string };
@@ -55,6 +59,8 @@ export const DEFAULT_SETTINGS: BSSettings = {
   summary: { useGenerationModel: true, provider: "openrouter", model: "" },
   recentTurns: 2,
   maxContextTokens: 32000,
+  includeFrontmatter: true,
+  frontmatterIgnore: "cssclasses, banner, banner_icon",
   bookmarkSort: "created",
   providers: {
     lmstudio: { baseUrl: "http://localhost:1234/v1" },
@@ -269,6 +275,26 @@ export class BSSettingTab extends PluginSettingTab {
           s.summary.useGenerationModel = v;
           await this.plugin.saveSettings();
           this.display();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("Include properties of linked notes")
+      .setDesc("Character profiles often keep their details in the note properties (frontmatter). Turn off to send only the text below the properties.")
+      .addToggle((t) =>
+        t.setValue(s.includeFrontmatter).onChange(async (v) => {
+          s.includeFrontmatter = v;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("Ignored properties")
+      .setDesc("Comma-separated property names left out of linked notes (layout or cosmetic fields).")
+      .addText((t) =>
+        t.setValue(s.frontmatterIgnore).onChange(async (v) => {
+          s.frontmatterIgnore = v;
+          await this.plugin.saveSettings();
         }),
       );
 

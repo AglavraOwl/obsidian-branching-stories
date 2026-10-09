@@ -181,3 +181,32 @@ describe("tree index", () => {
     expect(t.pathTo(t.get("s", "p")!).length).toBe(2);
   });
 });
+
+import { filterFrontmatterKeys, noteTextForContext } from "../src/core/links";
+
+describe("linked note text", () => {
+  const raw = "---\nname: Atka\ncssclasses: wide\nappearance:\n  hair: grey\ntraits:\n  - quiet\nbanner: x.png\n---\n# Atka\nHealer.\n\n## Looks\nGrey braid.\n";
+
+  it("includes properties and body by default", () => {
+    const t = noteTextForContext(raw, { heading: null, includeFrontmatter: true, ignoreKeys: [] })!;
+    expect(t).toContain("name: Atka");
+    expect(t).toContain("  hair: grey");
+    expect(t).toContain("# Atka\nHealer.");
+    expect(t.startsWith("---\n")).toBe(true);
+  });
+
+  it("drops ignored properties together with their nested lines", () => {
+    const t = noteTextForContext(raw, { heading: null, includeFrontmatter: true, ignoreKeys: ["cssclasses", " Banner "] })!;
+    expect(t).not.toContain("cssclasses");
+    expect(t).not.toContain("banner");
+    expect(t).toContain("traits:\n  - quiet");
+    expect(filterFrontmatterKeys("a: 1\nlist:\n  - x\n  - y\nb: 2", ["list"])).toBe("a: 1\nb: 2");
+  });
+
+  it("can leave properties out, and a heading link sends only that section", () => {
+    expect(noteTextForContext(raw, { heading: null, includeFrontmatter: false, ignoreKeys: [] })).toBe("# Atka\nHealer.\n\n## Looks\nGrey braid.");
+    expect(noteTextForContext(raw, { heading: "Looks", includeFrontmatter: true, ignoreKeys: [] })).toBe("## Looks\nGrey braid.");
+    expect(noteTextForContext(raw, { heading: "Nope", includeFrontmatter: true, ignoreKeys: [] })).toBeNull();
+    expect(noteTextForContext("Just text", { heading: null, includeFrontmatter: true, ignoreKeys: [] })).toBe("Just text");
+  });
+});

@@ -1,0 +1,9 @@
+{
+  "id": "branching-stories",
+  "name": "Branching Stories",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Generate and explore branching stories: one note per turn, linked into a tree of prompt versions, regenerations and branches.",
+  "author": "AglavraOwl",
+  "isDesktopOnly": false
+}

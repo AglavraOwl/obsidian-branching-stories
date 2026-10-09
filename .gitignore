@@ -1,0 +1,9 @@
+node_modules/
+main.js
+*.map
+data.json
+test-vault/
+# private story samples used only as reference
+2453 Chapter Next.md
+2454 Chapter Next.md
+2455 Chapter Next.md

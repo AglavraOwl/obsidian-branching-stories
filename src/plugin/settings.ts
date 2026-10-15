@@ -1,6 +1,7 @@
 import { App, Notice, PluginSettingTab, SecretComponent, Setting } from "obsidian";
 import { ModelInfo, PROVIDER_LABEL, ProviderKind } from "../api/client";
 import type BranchingStoriesPlugin from "./main";
+import { runConnectionTest } from "./diagnostics";
 import { pickModel } from "./modals";
 
 export interface GenerationSettings {
@@ -32,6 +33,8 @@ export interface BSSettings {
   maxContextTokens: number;
   /** Send the properties (frontmatter) of linked notes, not just their text. */
   includeFrontmatter: boolean;
+  /** auto = stream replies when the platform allows it; off = one request, whole reply at once. */
+  streaming: "auto" | "off";
   /** Comma-separated property names left out of linked notes. */
   frontmatterIgnore: string;
   bookmarkSort: "created" | "size";
@@ -60,6 +63,7 @@ export const DEFAULT_SETTINGS: BSSettings = {
   recentTurns: 2,
   maxContextTokens: 32000,
   includeFrontmatter: true,
+  streaming: "auto",
   frontmatterIgnore: "cssclasses, banner, banner_icon",
   bookmarkSort: "created",
   providers: {
@@ -214,6 +218,34 @@ export class BSSettingTab extends PluginSettingTab {
         }),
       );
 
+    new Setting(containerEl)
+      .setName("Streaming")
+      .setDesc("Auto shows the text as it is written when the device allows it, and falls back to one request otherwise. Turn off if replies fail or stall on a device.")
+      .addDropdown((d) =>
+        d
+          .addOption("auto", "Auto")
+          .addOption("off", "Off (whole reply at once)")
+          .setValue(s.streaming)
+          .onChange(async (v) => {
+            s.streaming = v as "auto" | "off";
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("Test connection")
+      .setDesc("Checks the provider, the model and whether streaming works on this device.")
+      .addButton((b) =>
+        b.setButtonText("Run test").onClick(async () => {
+          b.setDisabled(true);
+          try {
+            await runConnectionTest(this.plugin);
+          } finally {
+            b.setDisabled(false);
+          }
+        }),
+      );
+
     // ---- favorites ----------------------------------------------------------
     for (const k of ["openrouter", "lmstudio"] as ProviderKind[]) {
       for (const slug of [...s.favorites[k]]) {
@@ -248,7 +280,7 @@ export class BSSettingTab extends PluginSettingTab {
     this.fetchSetting("openrouter");
 
     new Setting(containerEl).setName("LM Studio").setHeading();
-    this.baseUrlSetting("lmstudio");
+    this.lmStudioUrlSetting();
     this.fetchSetting("lmstudio");
 
     // ---- context & summaries -------------------------------------------------
@@ -370,6 +402,24 @@ export class BSSettingTab extends PluginSettingTab {
           cfg.baseUrl = v.trim();
           await this.plugin.saveSettings();
         }),
+      );
+  }
+
+  /** LM Studio's address is per device: localhost on the PC, the PC's network address elsewhere. */
+  private lmStudioUrlSetting(): void {
+    const plugin = this.plugin;
+    new Setting(this.containerEl)
+      .setName("Base URL (this device only)")
+      .setDesc(
+        "Kept on this device and not synced. On the PC, http://localhost:1234/v1. On a phone or tablet use the PC's network address, " +
+          "for example http://192.168.1.20:1234/v1, with \"Serve on Local Network\" turned on in LM Studio's server settings " +
+          "and the port allowed through the Windows firewall.",
+      )
+      .addText((t) =>
+        t
+          .setPlaceholder(plugin.settings.providers.lmstudio.baseUrl)
+          .setValue(plugin.hasLocalBaseUrl("lmstudio") ? plugin.baseUrl("lmstudio") : "")
+          .onChange((v) => plugin.setLocalBaseUrl("lmstudio", v)),
       );
   }
 

@@ -13,7 +13,9 @@ import {
   setLabel,
   toggleStar,
 } from "./actions";
+import { runConnectionTest } from "./diagnostics";
 import type BranchingStoriesPlugin from "./main";
+import { showStoryMenu } from "./menu";
 import { NameModal, PromptModal, TextViewModal } from "./modals";
 import { SummaryCancelled } from "./summaries";
 
@@ -191,6 +193,18 @@ export function registerCommands(plugin: BranchingStoriesPlugin): void {
   });
 
   add("compile-path", "Compile path to note", (w) => !!w.node, (w) => compilePath(plugin, w.node!));
+
+  plugin.addCommand({
+    id: "story-menu",
+    name: "Story menu (all actions)",
+    callback: () => void showStoryMenu(plugin).catch((e) => plugin.generation.report(e)),
+  });
+
+  plugin.addCommand({
+    id: "test-connection",
+    name: "Test connection to the provider",
+    callback: () => void runConnectionTest(plugin).catch((e) => plugin.generation.report(e)),
+  });
 
   plugin.addCommand({
     id: "open-sidebar",

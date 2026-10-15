@@ -142,6 +142,7 @@ export class SummaryService {
         messages: summaryMessages(output),
         temperature: SUMMARY_TEMPERATURE,
         maxTokens: SUMMARY_MAX_TOKENS,
+        stream: false, // short replies: one request is simpler and works the same on every platform
         signal,
       },
       {},

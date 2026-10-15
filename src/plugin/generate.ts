@@ -1,4 +1,4 @@
-import { Notice, TFile, normalizePath, parseYaml } from "obsidian";
+import { Notice, Platform, TFile, normalizePath, parseYaml } from "obsidian";
 import { chatCompletion, ProviderError, ProviderKind, Usage } from "../api/client";
 import { BuiltContext, buildContext, PathTurn } from "../core/context";
 import { makeFileName, makeTimestamp, makeTitle, makeUniqueId, makeWikilink } from "../core/ids";
@@ -50,7 +50,6 @@ export interface PreparedContext {
   context: BuiltContext;
 }
 
-const STALE_AFTER_MS = 5 * 60 * 1000;
 const FLUSH_INTERVAL_MS = 1000;
 
 export class GenerationController {
@@ -273,6 +272,7 @@ export class GenerationController {
     // ---- stream ----------------------------------------------------------------
     const controller = new AbortController();
     this.active.set(this.key(meta), controller);
+    plugin.markRunning(meta, true);
     plugin.refreshStatusBar();
 
     let lastFlush = 0;
@@ -304,6 +304,7 @@ export class GenerationController {
           maxTokens: config.maxTokens,
           topP: config.topP ?? undefined,
           reasoning: config.reasoning,
+          stream: plugin.settings.streaming === "off" ? false : undefined,
           signal: controller.signal,
         },
         {
@@ -327,12 +328,17 @@ export class GenerationController {
         finalStatus = "stopped";
       } else {
         finalStatus = "failed";
-        fm.error = e instanceof Error ? e.message : String(e);
-        this.report(e);
+        let message = e instanceof Error ? e.message : String(e);
+        if (e instanceof ProviderError && e.kind === "stream" && Platform.isMobile) {
+          message += " Mobile apps can pause network requests in the background: keep Obsidian open while a reply is being written, then use Regenerate.";
+        }
+        fm.error = message;
+        this.report(new Error(message));
       }
     } finally {
       if (flushTimer !== null) window.clearTimeout(flushTimer);
       this.active.delete(this.key(meta));
+      plugin.markRunning(meta, false);
     }
 
     fm.status = finalStatus;
@@ -358,31 +364,25 @@ export class GenerationController {
 
   // ---- housekeeping ---------------------------------------------------------------
 
-  /** Mark nodes stuck in `generating` (interrupted requests) as failed. */
+  /**
+   * Mark nodes this device started but never finished (the app was closed or killed mid-request)
+   * as failed. Nodes started on other devices are left alone: their final text may simply not have
+   * synced yet, and writing here could overwrite it. The interface shows those as "interrupted".
+   */
   async failStale(): Promise<number> {
     const store = this.plugin.store;
-    const now = Date.now();
     let count = 0;
-    const stale: NodeMeta[] = [];
-    // Walk every story's nodes through the index by path scan.
     for (const file of this.app.vault.getMarkdownFiles()) {
       const meta = store.index.getByPath(file.path);
-      if (!meta || meta.status !== "generating" || this.isGenerating(meta)) continue;
-      const created = Date.parse(meta.created);
-      if (Number.isFinite(created) && now - created < STALE_AFTER_MS) continue;
-      stale.push(meta);
-    }
-    for (const meta of stale) {
-      const file = store.fileFor(meta);
-      if (!file) continue;
+      if (!meta || meta.status !== "generating" || this.isGenerating(meta) || !this.plugin.startedHere(meta)) continue;
       await this.app.fileManager.processFrontMatter(file, (fm) => {
         fm.status = "failed";
         fm.error = "Interrupted: generation did not finish.";
       });
       store.addMeta({ ...meta, status: "failed" });
+      this.plugin.markRunning(meta, false);
       count++;
     }
     return count;
   }
 }
-

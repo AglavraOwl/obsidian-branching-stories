@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, setIcon } from "obsidian";
+import { ItemView, Platform, WorkspaceLeaf, setIcon } from "obsidian";
 import { NodeMeta } from "../core/tree";
 import { nodeInfo, openNode } from "./actions";
 import type BranchingStoriesPlugin from "./main";
@@ -137,10 +137,16 @@ export class StorySidebar extends ItemView {
     if (info.version.total > 1 || opts.showBelow) badges.createSpan({ text: `v${info.version.index}/${info.version.total}`, cls: "bs-badge" });
     if (info.regen.total > 1) badges.createSpan({ text: `r${info.regen.index}/${info.regen.total}`, cls: "bs-badge" });
     if (opts.showBelow && info.descendants) badges.createSpan({ text: `${info.descendants} below`, cls: "bs-badge" });
-    if (meta.status !== "done") badges.createSpan({ text: meta.status, cls: `bs-badge bs-status-${meta.status}` });
+    const status = this.plugin.statusOf(meta);
+    if (status !== "done") badges.createSpan({ text: status, cls: `bs-badge bs-status-${status}` });
 
     row.addEventListener("click", () => {
-      openNode(this.plugin, meta).catch((e) => this.plugin.generation.report(e));
+      openNode(this.plugin, meta)
+        .then(() => {
+          // On a phone the sidebar is a drawer over the note: close it to show the chosen node.
+          if (Platform.isPhone) this.app.workspace.rightSplit.collapse();
+        })
+        .catch((e) => this.plugin.generation.report(e));
     });
   }
 }

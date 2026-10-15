@@ -4,7 +4,7 @@ An Obsidian plugin for iterative story generation. You write a short brief, a mo
 
 Providers: **LM Studio** and **OpenRouter** (both OpenAI-compatible). Personal-use tool.
 
-Status: **stage 1** (summaries, navigation bar, bookmarks, sidebar; PC only. Mobile comes in stage 2). See `branching-story-plugin-spec (1).md` for the full design.
+Status: **stage 2 in progress** (mobile support added on top of stage 1: summaries, navigation bar, bookmarks, sidebar). See `branching-story-plugin-spec (1).md` for the full design.
 
 ## Install with BRAT
 
@@ -59,6 +59,21 @@ Extra frontmatter fields for this: `summary_hash` (hash of the Output), `summary
 - A `[[Note]]` or `[[Note#Heading]]` in a prompt includes that note (or just that section) for that turn and for the following N turns that are still sent in full. With recent turns set to 0 every turn is sent in full, so the link stays in effect down the branch.
 - To keep a note in effect on a branch for good, link it in that node's **Keep in mind** section.
 - Links are cleaned from the text the model sees (`[[Atka]]` becomes `Atka`). The properties (frontmatter) of a linked note are sent too, as YAML above its text, because character profiles often keep their details there. A link to a heading sends only that section. Settings let you turn this off or leave out cosmetic properties (default: `cssclasses, banner, banner_icon`). Links inside linked notes are not followed.
+
+## Phone and tablet (Android)
+
+Install the plugin on each device with BRAT, then:
+
+1. **Settings → Test connection** (or the command *Test connection to the provider*). It reports whether the model list loads, whether the model slug is valid, and whether streaming works on that device.
+2. **OpenRouter** works anywhere. Enter the API key once on each device (Obsidian's secret storage is per device).
+3. **LM Studio** is reachable only from the PC or over your network. Its address is a *per-device* setting (stored on the device, never synced): on the PC keep `http://localhost:1234/v1`, on the phone or tablet enter the PC's network address, for example `http://192.168.1.20:1234/v1`. In LM Studio turn on *Serve on Local Network* in the server settings, and allow the port in the Windows firewall. Streaming from an `http://` address is often blocked in the mobile app; the plugin then sends one request per reply, so the text appears all at once.
+4. **Streaming** can be forced off in settings (one request per reply) if a device has trouble.
+
+On mobile there are no hotkeys, so the header has a **Story menu** button (also the command *Story menu (all actions)*): one list of every action that applies to the open note. The navigation bar shows short labels on phones (`v2/3`, `r1/2`); the phone header keeps only stop, new node and the menu.
+
+If the app is sent to the background while a reply is being written, Android may pause the request. The text received so far is kept and the node is marked failed; use Regenerate.
+
+A node left in `generating` by *another* device is shown as `interrupted` and is never rewritten by this device (its final text may just not have synced yet). Only the device that started a request marks it failed.
 
 ## Trying it without a real model
 

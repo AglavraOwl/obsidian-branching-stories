@@ -1,7 +1,8 @@
-import { MarkdownView } from "obsidian";
+import { MarkdownView, Platform } from "obsidian";
 import { toggleStar } from "./actions";
 import { editAndRegenerate, newNode, regenerate, whereAmI } from "./commands";
 import type BranchingStoriesPlugin from "./main";
+import { showStoryMenu } from "./menu";
 
 type Kind = "node" | "root" | "none";
 
@@ -68,25 +69,32 @@ export class HeaderActions {
     };
 
     // addAction puts new buttons to the left of earlier ones, so add in reverse reading order.
+    // A phone header has little room: it gets only stop, new node and the menu with everything else.
     if (att.kind === "node") {
-      att.star = add("star", "Star this node", async () => {
-        const w = here();
-        if (w.node) await toggleStar(plugin, w.node);
-      });
+      if (!Platform.isPhone) {
+        att.star = add("star", "Star this node", async () => {
+          const w = here();
+          if (w.node) await toggleStar(plugin, w.node);
+        });
+      }
       att.stop = add("square", "Stop generation", async () => {
         const w = here();
         if (w.node) plugin.generation.stop(w.node);
       });
-      add("pencil", "Edit prompt and regenerate", async () => {
-        const w = here();
-        if (w.node) await editAndRegenerate(plugin, w.node);
-      });
-      add("refresh-cw", "Regenerate", async () => {
-        const w = here();
-        if (w.node) await regenerate(plugin, w.node);
-      });
+      if (!Platform.isPhone) {
+        add("pencil", "Edit prompt and regenerate", async () => {
+          const w = here();
+          if (w.node) await editAndRegenerate(plugin, w.node);
+        });
+        add("refresh-cw", "Regenerate", async () => {
+          const w = here();
+          if (w.node) await regenerate(plugin, w.node);
+        });
+      }
     }
     add("plus", att.kind === "node" ? "New node from here" : "Write the first node", async () => newNode(plugin, here()));
+    // No hotkeys or easy command palette on mobile: one button opens a list of every action.
+    if (Platform.isMobile) add("more-horizontal", "Story menu", () => showStoryMenu(plugin));
   }
 }
 

@@ -21,6 +21,8 @@ export interface ChatRequest {
   topP?: number;
   /** Ask the provider for reasoning text (OpenRouter) and keep it if returned. */
   reasoning?: boolean;
+  /** false = never stream (one request, whole reply at once). Default: stream when possible. */
+  stream?: boolean;
   signal?: AbortSignal;
 }
 
@@ -245,6 +247,8 @@ export async function chatCompletion(
   const url = buildUrl(provider.baseUrl, "chat/completions");
   const headers = buildHeaders(provider);
 
+  if (req.stream === false) return nonStreaming(provider, req, cb, deps, new Error("streaming is turned off"));
+
   let response: Response | null = null;
   try {
     response = await deps.fetch(url, {
@@ -328,15 +332,20 @@ async function nonStreaming(
   streamError: unknown,
 ): Promise<ChatResult> {
   const label = PROVIDER_LABEL[provider.kind];
+  if (req.signal?.aborted) throw new ProviderError("Generation stopped.", "abort");
   let res: SimpleResponse;
   try {
-    res = await deps.request({
+    const pending = deps.request({
       url: buildUrl(provider.baseUrl, "chat/completions"),
       method: "POST",
       headers: buildHeaders(provider),
       body: JSON.stringify(buildChatBody(provider, req, false)),
     });
+    // A plain request cannot be cancelled, but Stop should still respond at once:
+    // stop waiting and drop the late reply.
+    res = req.signal ? await Promise.race([pending, abortRejection(req.signal)]) : await pending;
   } catch (e) {
+    if (e instanceof ProviderError) throw e;
     throw unreachable(provider, e instanceof Error && e.message ? e : streamError);
   }
   if (req.signal?.aborted) throw new ProviderError("Generation stopped.", "abort");
@@ -366,6 +375,14 @@ async function nonStreaming(
     finishReason: parsed.finishReason,
     streamed: false,
   };
+}
+
+function abortRejection(signal: AbortSignal): Promise<never> {
+  return new Promise((_resolve, reject) => {
+    const fail = () => reject(new ProviderError("Generation stopped.", "abort"));
+    if (signal.aborted) fail();
+    else signal.addEventListener("abort", fail, { once: true });
+  });
 }
 
 export async function fetchModels(provider: ProviderConfig, deps: ClientDeps): Promise<ModelInfo[]> {

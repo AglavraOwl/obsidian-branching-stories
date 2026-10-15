@@ -7,7 +7,9 @@ import {
   ProviderConfig,
   ProviderKind,
 } from "../api/client";
+import { displayStatus, DisplayStatus } from "../core/status";
 import { StoryOverrides } from "../core/storyDoc";
+import { NodeMeta } from "../core/tree";
 import { registerCommands } from "./commands";
 import { EffectiveConfig, GenerationController } from "./generate";
 import { BSSettings, BSSettingTab, mergeSettings } from "./settings";
@@ -18,6 +20,8 @@ import { StoryStore } from "./store";
 import { SummaryService } from "./summaries";
 
 const LAST_ACTIVE_KEY = "branching-stories:last-active:";
+const BASE_URL_KEY = "branching-stories:base-url:";
+const RUNNING_KEY = "branching-stories:running";
 
 export default class BranchingStoriesPlugin extends Plugin {
   settings!: BSSettings;
@@ -145,8 +149,57 @@ export default class BranchingStoriesPlugin extends Plugin {
     return cfg.keyPlain;
   }
 
+  /**
+   * LM Studio runs on one machine, so its address differs per device (localhost on the PC, the PC's
+   * network address on a phone). That address is kept in this device's local storage and never
+   * synced; the value in the settings file is only the default.
+   */
+  baseUrl(kind: ProviderKind): string {
+    if (kind === "lmstudio") {
+      const local = this.app.loadLocalStorage(BASE_URL_KEY + kind);
+      if (typeof local === "string" && local.trim()) return local.trim();
+    }
+    return this.settings.providers[kind].baseUrl;
+  }
+
+  setLocalBaseUrl(kind: ProviderKind, value: string): void {
+    this.app.saveLocalStorage(BASE_URL_KEY + kind, value.trim() || null);
+  }
+
+  hasLocalBaseUrl(kind: ProviderKind): boolean {
+    const local = this.app.loadLocalStorage(BASE_URL_KEY + kind);
+    return typeof local === "string" && !!local.trim();
+  }
+
   providerConfig(kind: ProviderKind): ProviderConfig {
-    return { kind, baseUrl: this.settings.providers[kind].baseUrl, apiKey: this.apiKey(kind) };
+    return { kind, baseUrl: this.baseUrl(kind), apiKey: this.apiKey(kind) };
+  }
+
+  // ---- generations started on this device -------------------------------------------
+
+  private runningSet(): Set<string> {
+    const v = this.app.loadLocalStorage(RUNNING_KEY);
+    return new Set(Array.isArray(v) ? (v as string[]) : []);
+  }
+
+  private runningKey(meta: NodeMeta): string {
+    return `${meta.story}\u0000${meta.id}`;
+  }
+
+  markRunning(meta: NodeMeta, running: boolean): void {
+    const set = this.runningSet();
+    if (running) set.add(this.runningKey(meta));
+    else set.delete(this.runningKey(meta));
+    this.app.saveLocalStorage(RUNNING_KEY, set.size ? [...set] : null);
+  }
+
+  /** Started on this device and not finished: it was interrupted if no request is running now. */
+  startedHere(meta: NodeMeta): boolean {
+    return this.runningSet().has(this.runningKey(meta));
+  }
+
+  statusOf(meta: NodeMeta): DisplayStatus {
+    return displayStatus(meta.status, meta.created, Date.now(), this.generation.isGenerating(meta));
   }
 
   /** Global settings with the story's root-note overrides applied. */
@@ -228,9 +281,9 @@ export default class BranchingStoriesPlugin extends Plugin {
     const parts = [`v ${v.index}/${v.total}`];
     if (r.total > 1) parts.push(`r ${r.index}/${r.total}`);
     parts.push(`depth ${depth}`);
-    if (meta.status === "generating") parts.push("generating…");
-    else if (meta.status === "failed") parts.push("failed");
-    else if (meta.status === "stopped") parts.push("stopped");
+    const status = this.statusOf(meta);
+    if (status === "generating") parts.push("generating…");
+    else if (status !== "done") parts.push(status);
     this.statusEl.setText(parts.join(" · "));
   }
 

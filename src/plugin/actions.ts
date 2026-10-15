@@ -46,7 +46,8 @@ export function describeNode(plugin: BranchingStoriesPlugin, meta: NodeMeta): st
   const parts = [`${meta.starred ? "★ " : ""}${meta.label || meta.title}`, `v${info.version.index}/${info.version.total}`];
   if (info.regen.total > 1) parts.push(`r${info.regen.index}/${info.regen.total}`);
   if (info.descendants) parts.push(`${info.descendants} below`);
-  if (meta.status !== "done") parts.push(meta.status);
+  const status = plugin.statusOf(meta);
+  if (status !== "done") parts.push(status);
   return parts.join(" · ");
 }
 

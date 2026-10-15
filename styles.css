@@ -212,3 +212,57 @@
   color: var(--text-faint);
   font-size: var(--font-ui-small);
 }
+
+/* ---- short labels ---- */
+.bs-nav-short {
+  display: none;
+}
+
+/* ---- phones and tablets ---- */
+.is-mobile .bs-navbar {
+  gap: 4px 6px;
+}
+
+.is-mobile .bs-nav-btn {
+  min-height: 40px;
+  min-width: 40px;
+  justify-content: center;
+}
+
+.is-mobile .bs-nav-btn .bs-nav-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.is-phone .bs-nav-long {
+  display: none;
+}
+
+.is-phone .bs-nav-short {
+  display: inline;
+}
+
+.is-phone .bs-nav-label {
+  min-width: 3.5em;
+}
+
+.is-phone .bs-navbar {
+  padding: 4px;
+}
+
+.is-mobile .bs-side-row {
+  padding: 10px 8px;
+}
+
+.is-mobile .bs-side-sort {
+  height: 32px;
+}
+
+.is-phone .bs-prompt-input {
+  min-height: 8em;
+}
+
+.is-phone .bs-wide-modal,
+.is-phone .bs-prompt-modal {
+  width: 100%;
+}

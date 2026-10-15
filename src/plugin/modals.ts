@@ -1,4 +1,4 @@
-import { App, FuzzySuggestModal, Modal, Notice, Setting } from "obsidian";
+import { App, FuzzySuggestModal, Modal, Notice, Platform, Setting } from "obsidian";
 import { PROVIDER_LABEL, ProviderKind } from "../api/client";
 import type BranchingStoriesPlugin from "./main";
 
@@ -28,7 +28,7 @@ export class PromptModal extends Modal {
     if (this.opts.hint) contentEl.createEl("p", { text: this.opts.hint, cls: "setting-item-description" });
 
     const area = contentEl.createEl("textarea", { cls: "bs-prompt-input" });
-    area.rows = 12;
+    area.rows = Platform.isPhone ? 7 : 12; // leave room for the keyboard and the buttons
     area.placeholder = this.opts.placeholder ?? "";
     area.value = this.opts.initial ?? "";
 
@@ -51,7 +51,7 @@ export class PromptModal extends Modal {
     new Setting(contentEl)
       .addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
       .addButton((b) => b.setButtonText(this.opts.submitLabel).setCta().onClick(submit));
-    contentEl.createEl("div", { text: "Ctrl+Enter to submit", cls: "setting-item-description" });
+    if (!Platform.isMobile) contentEl.createEl("div", { text: "Ctrl+Enter to submit", cls: "setting-item-description" });
     window.setTimeout(() => {
       area.focus();
       area.setSelectionRange(area.value.length, area.value.length);
@@ -167,8 +167,12 @@ export class TextViewModal extends Modal {
     new Setting(contentEl)
       .addButton((b) =>
         b.setButtonText("Copy").onClick(async () => {
-          await navigator.clipboard.writeText(this.opts.body);
-          new Notice("Copied.");
+          try {
+            await navigator.clipboard.writeText(this.opts.body);
+            new Notice("Copied.");
+          } catch {
+            new Notice("Could not copy; select the text and copy it by hand.");
+          }
         }),
       )
       .addButton((b) => b.setButtonText("Close").setCta().onClick(() => this.close()));

@@ -25,11 +25,17 @@ export function buildNavBar(plugin: BranchingStoriesPlugin, meta: NodeMeta): HTM
     fn().catch((e) => plugin.generation.report(e));
   };
 
-  const button = (parent: HTMLElement, icon: string | null, text: string, title: string, enabled: boolean, fn: () => Promise<void>): HTMLButtonElement => {
+  const button = (parent: HTMLElement, icon: string | null, text: string, title: string, enabled: boolean, fn: () => Promise<void>, shortText?: string): HTMLButtonElement => {
     const b = parent.createEl("button", { cls: "bs-nav-btn", attr: { type: "button", "aria-label": title, title } });
     forceStyle(b, { display: "inline-flex", "flex-direction": "row", "align-items": "center", width: "auto", margin: "0" });
     if (icon) setIcon(b.createSpan({ cls: "bs-nav-icon" }), icon);
-    if (text) b.createSpan({ text, cls: "bs-nav-text" });
+    if (text && shortText) {
+      // Phones show the short form (see styles.css).
+      b.createSpan({ text, cls: "bs-nav-text bs-nav-long" });
+      b.createSpan({ text: shortText, cls: "bs-nav-text bs-nav-short" });
+    } else if (text) {
+      b.createSpan({ text, cls: "bs-nav-text" });
+    }
     b.disabled = !enabled;
     b.addEventListener("click", run(fn));
     // keep the editor from taking focus / starting a selection
@@ -42,13 +48,13 @@ export function buildNavBar(plugin: BranchingStoriesPlugin, meta: NodeMeta): HTM
   const versions = bar.createDiv({ cls: "bs-nav-group" });
   forceStyle(versions, GROUP_STYLE);
   button(versions, "chevron-left", "", "Previous prompt version", info.version.index > 1, () => goStep(plugin, meta, "version", -1));
-  button(versions, null, `Version ${info.version.index} of ${info.version.total}`, "Choose a prompt version", info.version.total > 1, () => pickVersion(plugin, meta)).addClass("bs-nav-label");
+  button(versions, null, `Version ${info.version.index} of ${info.version.total}`, "Choose a prompt version", info.version.total > 1, () => pickVersion(plugin, meta), `v${info.version.index}/${info.version.total}`).addClass("bs-nav-label");
   button(versions, "chevron-right", "", "Next prompt version", info.version.index < info.version.total, () => goStep(plugin, meta, "version", 1));
 
   const regens = bar.createDiv({ cls: "bs-nav-group" });
   forceStyle(regens, GROUP_STYLE);
   button(regens, "chevron-left", "", "Previous regeneration", info.regen.index > 1, () => goStep(plugin, meta, "regen", -1));
-  button(regens, null, `Regeneration ${info.regen.index} of ${info.regen.total}`, "Choose a regeneration", info.regen.total > 1, () => pickRegen(plugin, meta)).addClass("bs-nav-label");
+  button(regens, null, `Regeneration ${info.regen.index} of ${info.regen.total}`, "Choose a regeneration", info.regen.total > 1, () => pickRegen(plugin, meta), `r${info.regen.index}/${info.regen.total}`).addClass("bs-nav-label");
   button(regens, "chevron-right", "", "Next regeneration", info.regen.index < info.regen.total, () => goStep(plugin, meta, "regen", 1));
 
   button(bar, "arrow-down", info.children ? String(info.children) : "", info.children ? "Continue to a child" : "No children yet", info.children > 0, () => goDown(plugin, meta, meta.story));
@@ -57,13 +63,14 @@ export function buildNavBar(plugin: BranchingStoriesPlugin, meta: NodeMeta): HTM
   if (meta.starred) star.addClass("bs-starred");
 
   if (meta.label) bar.createSpan({ text: meta.label, cls: "bs-nav-chip" });
-  if (meta.status !== "done") bar.createSpan({ text: meta.status, cls: `bs-nav-chip bs-status-${meta.status}` });
+  const status = plugin.statusOf(meta);
+  if (status !== "done") bar.createSpan({ text: status, cls: `bs-nav-chip bs-status-${status}` });
   return bar;
 }
 
 function signature(plugin: BranchingStoriesPlugin, meta: NodeMeta): string {
   const info = nodeInfo(plugin, meta);
-  return JSON.stringify([info.version, info.regen, info.children, meta.starred, meta.label, meta.status]);
+  return JSON.stringify([info.version, info.regen, info.children, meta.starred, meta.label, plugin.statusOf(meta)]);
 }
 
 /** Position right after the frontmatter block (or 0 when there is none). */

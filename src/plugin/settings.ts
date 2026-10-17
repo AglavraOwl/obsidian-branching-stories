@@ -183,7 +183,7 @@ export class BSSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Max tokens")
-      .setDesc("Upper limit for one generated turn (reasoning models also spend it on thinking).")
+      .setDesc("Upper limit for one generated turn. With reasoning on, the thinking and the story share this limit, so raise it (for example to 8000 or more).")
       .addText((t) =>
         t.setValue(String(s.generation.maxTokens)).onChange(async (v) => {
           const n = parseInt(v, 10);
@@ -209,8 +209,13 @@ export class BSSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Store reasoning")
-      .setDesc("Ask for reasoning text where supported and keep it in a collapsed callout. It is never sent back as context.")
+      .setName("Use reasoning (and keep it in the note)")
+      .setDesc(
+        "On: asks OpenRouter to let the model think first and saves the thinking in a collapsed callout. " +
+          "Thinking costs tokens and counts toward Max tokens. " +
+          "Off: nothing is requested and any thinking text is discarded; whether the model still thinks internally depends on the model. " +
+          "Each node's usage shows the reasoning tokens when the provider reports them. The thinking is never sent back as context.",
+      )
       .addToggle((t) =>
         t.setValue(s.generation.reasoning).onChange(async (v) => {
           s.generation.reasoning = v;

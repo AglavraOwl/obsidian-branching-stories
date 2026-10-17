@@ -33,7 +33,10 @@ export interface ChatCallbacks {
 
 export interface Usage {
   inputTokens?: number;
+  /** Output tokens, which normally already include the reasoning tokens. */
   outputTokens?: number;
+  /** Part of the output tokens spent on reasoning, when the provider reports it. */
+  reasoningTokens?: number;
   cost?: number;
 }
 
@@ -143,9 +146,11 @@ function usageFrom(raw: unknown): Usage | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const u = raw as Record<string, unknown>;
   const num = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined);
+  const details = u.completion_tokens_details as Record<string, unknown> | undefined;
   const usage: Usage = {
     inputTokens: num(u.prompt_tokens),
     outputTokens: num(u.completion_tokens),
+    reasoningTokens: num(details?.reasoning_tokens),
     cost: num(u.cost),
   };
   return usage.inputTokens === undefined && usage.outputTokens === undefined && usage.cost === undefined

@@ -16,8 +16,16 @@ interface Attached {
 /** Buttons in the note header (view actions) for the main commands. */
 export class HeaderActions {
   private attached = new WeakMap<MarkdownView, Attached>();
+  /** Every button this instance added, so that unloading the plugin can take them all away. */
+  private everything = new Set<HTMLElement>();
 
   constructor(private plugin: BranchingStoriesPlugin) {}
+
+  /** Remove all buttons: Obsidian leaves them in the header when a plugin is disabled or reloaded. */
+  destroy(): void {
+    for (const el of this.everything) el.detach();
+    this.everything.clear();
+  }
 
   syncAll(): void {
     this.plugin.app.workspace.iterateAllLeaves((leaf) => {
@@ -33,7 +41,10 @@ export class HeaderActions {
 
     let current = this.attached.get(view);
     if (current && current.kind !== kind) {
-      current.elements.forEach((el) => el.detach());
+      current.elements.forEach((el) => {
+        el.detach();
+        this.everything.delete(el);
+      });
       current = undefined;
       this.attached.delete(view);
     }
@@ -65,6 +76,7 @@ export class HeaderActions {
         fn().catch((e) => plugin.generation.report(e));
       });
       att.elements.push(el);
+      this.everything.add(el);
       return el;
     };
 

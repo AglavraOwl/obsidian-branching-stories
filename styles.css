@@ -266,3 +266,7 @@
 .is-phone .bs-prompt-modal {
   width: 100%;
 }
+
+.bs-draft-note {
+  margin-bottom: 6px;
+}

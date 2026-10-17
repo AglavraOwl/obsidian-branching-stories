@@ -343,14 +343,20 @@ export class GenerationController {
 
     fm.status = finalStatus;
     if (usage) {
-      fm.usage = { input_tokens: usage.inputTokens, output_tokens: usage.outputTokens, cost: usage.cost };
+      fm.usage = {
+        input_tokens: usage.inputTokens,
+        output_tokens: usage.outputTokens,
+        reasoning_tokens: usage.reasoningTokens,
+        cost: usage.cost,
+      };
     }
     write();
     await writing;
     store.addMeta({ ...meta, status: finalStatus });
     plugin.refreshStatusBar();
     if (finalStatus === "done") {
-      const t = usage?.outputTokens ? ` · ${usage.outputTokens} tokens out` : "";
+      const reasoning = usage?.reasoningTokens ? `, ${usage.reasoningTokens} of them reasoning` : "";
+      const t = usage?.outputTokens ? ` · ${usage.outputTokens} tokens out${reasoning}` : "";
       new Notice(`Done${t}.`);
     }
     return file;

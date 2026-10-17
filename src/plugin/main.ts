@@ -63,6 +63,12 @@ export default class BranchingStoriesPlugin extends Plugin {
       this.scheduleUiRefresh();
     });
 
+    // Header buttons and reading-view bars outlive the plugin unless removed (disable, update, reload).
+    this.register(() => {
+      this.headerActions.destroy();
+      document.querySelectorAll(".bs-navbar").forEach((el) => el.remove());
+    });
+
     this.registerView(SIDEBAR_VIEW_TYPE, (leaf) => new StorySidebar(leaf, this));
     this.addRibbonIcon("git-branch", "Story sidebar", () => void this.activateSidebar());
     this.registerEditorExtension(navBarExtension(this));

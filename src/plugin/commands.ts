@@ -16,7 +16,7 @@ import {
 import { runConnectionTest } from "./diagnostics";
 import type BranchingStoriesPlugin from "./main";
 import { showStoryMenu } from "./menu";
-import { NameModal, PromptModal, TextViewModal } from "./modals";
+import { clearDraft, draftKey, NameModal, PromptModal, TextViewModal } from "./modals";
 import { SummaryCancelled } from "./summaries";
 
 export interface Where {
@@ -39,13 +39,17 @@ export function whereAmI(plugin: BranchingStoriesPlugin): Where | null {
 
 /** Prompt dialog, then generate a child of the open node (or the first node from the story root). */
 export async function newNode(plugin: BranchingStoriesPlugin, w: Where): Promise<void> {
+  const key = draftKey(w.storyFolder, w.node?.id ?? null, "new");
   const prompt = await new PromptModal(plugin.app, {
     title: w.node ? "Next prompt" : "First prompt",
     submitLabel: "Generate",
     placeholder: "What happens next? You can link notes with [[Note name]] to include them.",
+    draftKey: key,
   }).open();
   if (!prompt) return;
-  await plugin.generation.run({ storyFolder: w.storyFolder, parent: w.node ?? null, prompt, regenOf: null });
+  const file = await plugin.generation.run({ storyFolder: w.storyFolder, parent: w.node ?? null, prompt, regenOf: null });
+  // Keep the text until a node exists: if the model or key was wrong, the prompt is not lost.
+  if (file) clearDraft(plugin.app, key);
 }
 
 export async function regenerate(plugin: BranchingStoriesPlugin, node: NodeMeta): Promise<void> {
@@ -73,19 +77,22 @@ export async function editAndRegenerate(plugin: BranchingStoriesPlugin, node: No
   const file = plugin.store.fileFor(node);
   if (!file) return;
   const loaded = await plugin.store.load(file);
+  const key = draftKey(node.story, node.id, "edit");
   const prompt = await new PromptModal(plugin.app, {
     title: "Edit prompt (creates a new version)",
     initial: loaded.sections.prompt,
     submitLabel: "Generate",
+    draftKey: key,
   }).open();
   if (!prompt) return;
-  await plugin.generation.run({
+  const created = await plugin.generation.run({
     storyFolder: node.story,
     parent: plugin.store.index.parentOf(node) ?? null,
     prompt,
     regenOf: null,
     keep: loaded.sections.keep,
   });
+  if (created) clearDraft(plugin.app, key);
 }
 
 export function registerCommands(plugin: BranchingStoriesPlugin): void {

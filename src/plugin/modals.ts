@@ -2,16 +2,50 @@ import { App, FuzzySuggestModal, Modal, Notice, Platform, Setting } from "obsidi
 import { PROVIDER_LABEL, ProviderKind } from "../api/client";
 import type BranchingStoriesPlugin from "./main";
 
-/** Multi-line prompt entry. Resolves with the text, or null if cancelled. */
+const DRAFT_PREFIX = "branching-stories:draft:";
+
+/** Local-storage key under which an unsent prompt for this place in the story is kept. */
+export function draftKey(story: string, nodeId: string | null, mode: "new" | "edit"): string {
+  return `${DRAFT_PREFIX}${story}\u0000${nodeId ?? "root"}:${mode}`;
+}
+
+export function clearDraft(app: App, key: string | undefined): void {
+  if (key) app.saveLocalStorage(key, null);
+}
+
+/**
+ * Multi-line prompt entry. Resolves with the text, or null if closed without submitting.
+ * With a `draftKey` what is typed is kept on this device while typing, so a window closed by
+ * accident (a stray tap, the back gesture, an app switch) gets its text back next time.
+ * The caller clears the draft once the prompt has really been used; the Cancel button discards it.
+ */
 export class PromptModal extends Modal {
   private result: string | null = null;
   private resolve!: (v: string | null) => void;
+  private area: HTMLTextAreaElement | null = null;
+  private discard = false;
+  private saveTimer: number | null = null;
 
   constructor(
     app: App,
-    private opts: { title: string; initial?: string; submitLabel: string; placeholder?: string; hint?: string },
+    private opts: {
+      title: string;
+      initial?: string;
+      submitLabel: string;
+      placeholder?: string;
+      hint?: string;
+      draftKey?: string;
+    },
   ) {
     super(app);
+  }
+
+  private saveDraft(): void {
+    const key = this.opts.draftKey;
+    if (!key || !this.area) return;
+    const text = this.area.value;
+    const unchanged = text.trim() === "" || text === (this.opts.initial ?? "");
+    this.app.saveLocalStorage(key, unchanged ? null : text);
   }
 
   open(): Promise<string | null> {
@@ -27,10 +61,30 @@ export class PromptModal extends Modal {
     this.setTitle(this.opts.title);
     if (this.opts.hint) contentEl.createEl("p", { text: this.opts.hint, cls: "setting-item-description" });
 
+    const initial = this.opts.initial ?? "";
+    const draft = this.opts.draftKey ? this.app.loadLocalStorage(this.opts.draftKey) : null;
+    const restored = typeof draft === "string" && draft.trim() !== "" && draft !== initial;
+    const restoredNote = restored ? contentEl.createDiv({ cls: "setting-item-description bs-draft-note" }) : null;
+
     const area = contentEl.createEl("textarea", { cls: "bs-prompt-input" });
+    this.area = area;
     area.rows = Platform.isPhone ? 7 : 12; // leave room for the keyboard and the buttons
     area.placeholder = this.opts.placeholder ?? "";
-    area.value = this.opts.initial ?? "";
+    area.value = restored ? (draft as string) : initial;
+    area.addEventListener("input", () => {
+      if (this.saveTimer !== null) window.clearTimeout(this.saveTimer);
+      this.saveTimer = window.setTimeout(() => this.saveDraft(), 300);
+    });
+
+    if (restoredNote) {
+      restoredNote.createSpan({ text: "Restored your unsent draft. " });
+      restoredNote.createEl("a", { text: "Discard it", href: "#" }).addEventListener("click", (ev) => {
+        ev.preventDefault();
+        area.value = initial;
+        clearDraft(this.app, this.opts.draftKey);
+        restoredNote.remove();
+      });
+    }
 
     const submit = (): void => {
       const text = area.value.trim();
@@ -49,7 +103,12 @@ export class PromptModal extends Modal {
     });
 
     new Setting(contentEl)
-      .addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+      .addButton((b) =>
+        b.setButtonText("Cancel").onClick(() => {
+          this.discard = true;
+          this.close();
+        }),
+      )
       .addButton((b) => b.setButtonText(this.opts.submitLabel).setCta().onClick(submit));
     if (!Platform.isMobile) contentEl.createEl("div", { text: "Ctrl+Enter to submit", cls: "setting-item-description" });
     window.setTimeout(() => {
@@ -59,6 +118,10 @@ export class PromptModal extends Modal {
   }
 
   onClose(): void {
+    if (this.saveTimer !== null) window.clearTimeout(this.saveTimer);
+    if (this.discard) clearDraft(this.app, this.opts.draftKey);
+    else if (this.result === null) this.saveDraft(); // closed by accident: keep what was typed
+    this.area = null;
     this.contentEl.empty();
     this.resolve(this.result);
   }

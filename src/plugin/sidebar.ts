@@ -140,13 +140,22 @@ export class StorySidebar extends ItemView {
     const status = this.plugin.statusOf(meta);
     if (status !== "done") badges.createSpan({ text: status, cls: `bs-badge bs-status-${status}` });
 
-    row.addEventListener("click", () => {
-      openNode(this.plugin, meta)
-        .then(() => {
-          // On a phone the sidebar is a drawer over the note: close it to show the chosen node.
-          if (Platform.isPhone) this.app.workspace.rightSplit.collapse();
-        })
-        .catch((e) => this.plugin.generation.report(e));
+    const tab = row.createSpan({ cls: "bs-side-tab", attr: { "aria-label": "Open in a new tab", title: "Open in a new tab" } });
+    setIcon(tab, "external-link");
+    tab.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      this.open(meta, true);
     });
+
+    row.addEventListener("click", (ev) => this.open(meta, ev.ctrlKey || ev.metaKey));
+  }
+
+  private open(meta: NodeMeta, newTab: boolean): void {
+    openNode(this.plugin, meta, newTab)
+      .then(() => {
+        // On a phone the sidebar is a drawer over the note: close it to show the chosen node.
+        if (Platform.isPhone) this.app.workspace.rightSplit.collapse();
+      })
+      .catch((e) => this.plugin.generation.report(e));
   }
 }

@@ -30,12 +30,22 @@ Commands (command palette; assign hotkeys as you like):
 | Go to parent / child | Child picker if there are several |
 | Previous / next prompt version, regeneration | Moves along siblings |
 | Choose prompt version… / Choose regeneration… | Pick from a list |
+| Copy prompt of this node | Puts the prompt on the clipboard and remembers it for the prompt window |
+| Open another node in a new tab… | Parent, children, other versions or regenerations, opened in a new tab (the sidebar rows have a new-tab button too) |
 | Go to the story's last active node | Per-device (not synced) |
 | Toggle star on this node / Set branch label… | Bookmarks: `starred` and `label` in the frontmatter |
 | Regenerate summary of this node | Forces a new summary (replaces even a hand-written one) |
 | Compile path to note | Joins the Output sections from the root to this node into `<story>/Compiled/` |
 | Open story sidebar | Path with counters, what the node continues with, and the bookmarks list |
 | Preview context (new node / this node) | Shows exactly what would be sent, with token estimates |
+
+### Reusing prompts
+
+The prompt window offers prompts you already wrote, so you do not have to dig them out:
+
+- Writing a new node from X: **"Use the latest"** puts in the newest prompt that continues X, or that continues another version of X's turn (for example, after editing turn 2 into a new version, the prompt you used for turn 3 under the old version). **"More prompts…"** lists all of them. Picking one replaces the text in the box.
+- Editing a prompt: the same list shows the other versions of that turn.
+- **"Insert copied prompt"** appears when you used *Copy prompt of this node*.
 
 ### Navigation bar and buttons
 

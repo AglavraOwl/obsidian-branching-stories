@@ -2,6 +2,18 @@ import { App, FuzzySuggestModal, Modal, Notice, Platform, Setting } from "obsidi
 import { PROVIDER_LABEL, ProviderKind } from "../api/client";
 import type BranchingStoriesPlugin from "./main";
 
+/** A prompt that can be dropped into the prompt window. */
+export interface PromptChoice {
+  /** Where it comes from, e.g. "Continues version 1". */
+  label: string;
+  text: string;
+}
+
+const snippet = (text: string, max: number): string => {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+};
+
 const DRAFT_PREFIX = "branching-stories:draft:";
 
 /** Local-storage key under which an unsent prompt for this place in the story is kept. */
@@ -35,6 +47,10 @@ export class PromptModal extends Modal {
       placeholder?: string;
       hint?: string;
       draftKey?: string;
+      /** Prompts that can be reused (loaded after the window opens). */
+      choices?: () => Promise<PromptChoice[]>;
+      /** A prompt copied earlier with "Copy prompt of this node". */
+      copied?: string | null;
     },
   ) {
     super(app);
@@ -66,6 +82,8 @@ export class PromptModal extends Modal {
     const restored = typeof draft === "string" && draft.trim() !== "" && draft !== initial;
     const restoredNote = restored ? contentEl.createDiv({ cls: "setting-item-description bs-draft-note" }) : null;
 
+    const reuseRow = this.opts.choices || this.opts.copied ? contentEl.createDiv({ cls: "bs-reuse" }) : null;
+
     const area = contentEl.createEl("textarea", { cls: "bs-prompt-input" });
     this.area = area;
     area.rows = Platform.isPhone ? 7 : 12; // leave room for the keyboard and the buttons
@@ -75,6 +93,45 @@ export class PromptModal extends Modal {
       if (this.saveTimer !== null) window.clearTimeout(this.saveTimer);
       this.saveTimer = window.setTimeout(() => this.saveDraft(), 300);
     });
+
+    // Replace the text with a reused prompt (and let the draft saver see the change).
+    const fill = (text: string): void => {
+      area.value = text;
+      area.dispatchEvent(new Event("input"));
+      area.focus();
+      area.setSelectionRange(text.length, text.length);
+    };
+    if (reuseRow) {
+      const copied = this.opts.copied?.trim();
+      if (copied) {
+        const b = reuseRow.createEl("button", { cls: "bs-reuse-btn", text: `Insert copied prompt: “${snippet(copied, 50)}”` });
+        b.addEventListener("click", () => fill(copied));
+      }
+      this.opts.choices?.().then(
+        (list) => {
+          if (!this.area || !list.length) return; // closed meanwhile, or nothing to offer
+          const first = list[0];
+          const latest = reuseRow.createEl("button", {
+            cls: "bs-reuse-btn",
+            text: `Use the latest (${first.label.toLowerCase()}): “${snippet(first.text, 60)}”`,
+          });
+          latest.addEventListener("click", () => fill(first.text));
+          if (list.length > 1) {
+            const more = reuseRow.createEl("button", { cls: "bs-reuse-btn", text: `More prompts… (${list.length})` });
+            more.addEventListener("click", async () => {
+              const picked = await new ChoiceModal<PromptChoice>(
+                this.app,
+                list,
+                (c) => `${c.label} — ${snippet(c.text, 90)}`,
+                "Reuse a prompt",
+              ).openAndWait();
+              if (picked) fill(picked.text);
+            });
+          }
+        },
+        () => undefined, // a failed lookup must never block writing the prompt
+      );
+    }
 
     if (restoredNote) {
       restoredNote.createSpan({ text: "Restored your unsent draft. " });

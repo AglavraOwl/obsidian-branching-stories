@@ -1,10 +1,12 @@
 import { Notice } from "obsidian";
 import {
   compilePath,
+  copyPrompt,
   goDown,
   goStep,
   goUp,
   nodeInfo,
+  openNeighbourInNewTab,
   openNode,
   pickRegen,
   pickVersion,
@@ -47,6 +49,8 @@ export async function showStoryMenu(plugin: BranchingStoriesPlugin): Promise<voi
     add("Regenerate", () => regenerate(plugin, node));
     add("Edit prompt and regenerate", () => editAndRegenerate(plugin, node));
 
+    add("Copy prompt of this node", () => copyPrompt(plugin, node));
+    add("Open another node in a new tab…", () => openNeighbourInNewTab(plugin, node, node.story));
     add("Go to parent", () => goUp(plugin, node));
     if (info.children) add(`Go to child (${info.children})`, () => goDown(plugin, node, node.story));
     if (info.version.index > 1) add(`Previous prompt version (${info.version.index} of ${info.version.total})`, () => goStep(plugin, node, "version", -1));

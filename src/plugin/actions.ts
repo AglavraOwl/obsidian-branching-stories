@@ -1,10 +1,11 @@
 import { Notice, TFile, normalizePath } from "obsidian";
 import { makeTimestamp, makeWikilink } from "../core/ids";
+import { dedupeByText, PromptSource } from "../core/reuse";
 import { compileOutputs } from "../core/summary";
 import { NodeMeta } from "../core/tree";
 import { emitYaml } from "../core/yaml";
 import type BranchingStoriesPlugin from "./main";
-import { ChoiceModal, NameModal } from "./modals";
+import { ChoiceModal, NameModal, PromptChoice } from "./modals";
 
 /** Everything the navigation bar, sidebar and commands show about a node's neighbours. */
 export interface NodeInfo {
@@ -32,13 +33,13 @@ export function positionText(info: NodeInfo): string {
     : `version ${info.version.index} of ${info.version.total}`;
 }
 
-export async function openNode(plugin: BranchingStoriesPlugin, target: NodeMeta | TFile): Promise<void> {
+export async function openNode(plugin: BranchingStoriesPlugin, target: NodeMeta | TFile, newTab = false): Promise<void> {
   const file = target instanceof TFile ? target : plugin.store.fileFor(target);
   if (!file) {
     new Notice("That note could not be found in the vault.");
     return;
   }
-  await plugin.app.workspace.getLeaf(false).openFile(file);
+  await plugin.app.workspace.getLeaf(newTab ? "tab" : false).openFile(file);
 }
 
 export function describeNode(plugin: BranchingStoriesPlugin, meta: NodeMeta): string {
@@ -179,4 +180,79 @@ export async function compilePath(plugin: BranchingStoriesPlugin, node: NodeMeta
   const file = await plugin.app.vault.create(normalizePath(`${folder}/${name}.md`), `---\n${fm}\n---\n\n${text}\n`);
   await plugin.app.workspace.getLeaf(false).openFile(file);
   new Notice(`Compiled ${outputs.filter((o) => o.trim()).length} turns.`);
+}
+
+// ---- prompts: copy, reuse, open elsewhere --------------------------------------------
+
+/** Put the node's prompt on the clipboard and remember it for the prompt window. */
+export async function copyPrompt(plugin: BranchingStoriesPlugin, node: NodeMeta): Promise<void> {
+  const file = plugin.store.fileFor(node);
+  if (!file) return;
+  const text = (await plugin.store.load(file)).sections.prompt.trim();
+  if (!text) {
+    new Notice("This node has no prompt text.");
+    return;
+  }
+  plugin.setCopiedPrompt(text);
+  try {
+    await navigator.clipboard.writeText(text);
+    new Notice("Prompt copied.");
+  } catch {
+    new Notice('Prompt remembered; use "Insert copied prompt" in the prompt window (the system clipboard was not available).');
+  }
+}
+
+const MAX_REUSE_CHOICES = 40;
+
+/** Read the prompts behind the sources, for the "reuse a prompt" list. */
+export async function promptChoices(plugin: BranchingStoriesPlugin, sources: PromptSource[]): Promise<PromptChoice[]> {
+  const idx = plugin.store.index;
+  const loaded: PromptChoice[] = [];
+  for (const source of sources.slice(0, MAX_REUSE_CHOICES)) {
+    const node = await plugin.store.loadMeta(source.node);
+    const text = node?.sections.prompt.trim();
+    if (!text) continue;
+    const pos = idx.versionPosition(source.node);
+    const label =
+      source.origin === "continuation"
+        ? `Existing continuation (v${pos.index}/${pos.total})`
+        : source.origin === "other-version"
+          ? `Continues version ${source.fromVersion}`
+          : `Version ${source.fromVersion} of this turn`;
+    loaded.push({ label, text });
+  }
+  return dedupeByText(loaded);
+}
+
+/** Pick a neighbouring node (parent, children, other versions or regenerations) and open it in a new tab. */
+export async function openNeighbourInNewTab(plugin: BranchingStoriesPlugin, node: NodeMeta | null, storyFolder: string): Promise<void> {
+  const idx = plugin.store.index;
+  const items: { label: string; meta: NodeMeta }[] = [];
+  const seen = new Set<string>();
+  const add = (prefix: string, meta: NodeMeta | undefined): void => {
+    if (!meta || seen.has(meta.id) || meta.id === node?.id) return;
+    seen.add(meta.id);
+    items.push({ label: `${prefix} · ${describeNode(plugin, meta)}`, meta });
+  };
+
+  if (node) {
+    add("Parent", idx.parentOf(node));
+    for (const c of idx.childrenOf(node)) add("Child", c);
+    const own = idx.originalId(node);
+    for (const v of idx.promptVersions(node)) if (v.id !== own) add("Other version", idx.preferredMember(v));
+    for (const r of idx.regenerations(node)) add("Regeneration", r);
+  } else {
+    for (const r of idx.rootsOf(storyFolder)) add("First node", r);
+  }
+  if (!items.length) {
+    new Notice("No neighbouring nodes to open.");
+    return;
+  }
+  const chosen = await new ChoiceModal<{ label: string; meta: NodeMeta }>(
+    plugin.app,
+    items,
+    (i) => i.label,
+    "Open in a new tab…",
+  ).openAndWait();
+  if (chosen) await openNode(plugin, chosen.meta, true);
 }

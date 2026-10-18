@@ -270,3 +270,46 @@
 .bs-draft-note {
   margin-bottom: 6px;
 }
+
+/* ---- reuse a prompt ---- */
+.bs-reuse {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.bs-reuse-btn {
+  text-align: left;
+  white-space: normal;
+  height: auto;
+  min-height: 30px;
+  padding: 4px 8px;
+  font-size: var(--font-ui-small);
+}
+
+.is-mobile .bs-reuse-btn {
+  min-height: 40px;
+}
+
+/* ---- open in new tab (sidebar) ---- */
+.bs-side-tab {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 2px;
+  color: var(--text-faint);
+}
+
+.bs-side-tab:hover {
+  color: var(--text-normal);
+}
+
+.bs-side-tab svg {
+  width: 14px;
+  height: 14px;
+}
+
+.is-mobile .bs-side-tab {
+  padding: 8px;
+}

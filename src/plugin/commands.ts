@@ -4,11 +4,14 @@ import { NODES_FOLDER, newStoryNote, STORY_ROOT_FILE } from "../core/storyDoc";
 import { NodeMeta } from "../core/tree";
 import {
   compilePath,
+  copyPrompt,
   goDown,
   goStep,
   goUp,
+  openNeighbourInNewTab,
   openNode,
   pickRegen,
+  promptChoices,
   pickVersion,
   setLabel,
   toggleStar,
@@ -16,6 +19,7 @@ import {
 import { runConnectionTest } from "./diagnostics";
 import type BranchingStoriesPlugin from "./main";
 import { showStoryMenu } from "./menu";
+import { continuationSources, versionSources } from "../core/reuse";
 import { clearDraft, draftKey, NameModal, PromptModal, TextViewModal } from "./modals";
 import { SummaryCancelled } from "./summaries";
 
@@ -45,6 +49,8 @@ export async function newNode(plugin: BranchingStoriesPlugin, w: Where): Promise
     submitLabel: "Generate",
     placeholder: "What happens next? You can link notes with [[Note name]] to include them.",
     draftKey: key,
+    choices: () => promptChoices(plugin, continuationSources(plugin.store.index, w.storyFolder, w.node ?? null)),
+    copied: plugin.copiedPrompt(),
   }).open();
   if (!prompt) return;
   const file = await plugin.generation.run({ storyFolder: w.storyFolder, parent: w.node ?? null, prompt, regenOf: null });
@@ -83,6 +89,8 @@ export async function editAndRegenerate(plugin: BranchingStoriesPlugin, node: No
     initial: loaded.sections.prompt,
     submitLabel: "Generate",
     draftKey: key,
+    choices: () => promptChoices(plugin, versionSources(plugin.store.index, node)),
+    copied: plugin.copiedPrompt(),
   }).open();
   if (!prompt) return;
   const created = await plugin.generation.run({
@@ -186,6 +194,10 @@ export function registerCommands(plugin: BranchingStoriesPlugin): void {
   });
 
   // ---- bookmarks, summaries, output --------------------------------------------------
+  add("copy-prompt", "Copy prompt of this node", (w) => !!w.node, (w) => copyPrompt(plugin, w.node!));
+  add("open-neighbour-tab", "Open another node in a new tab…", () => true, (w) =>
+    openNeighbourInNewTab(plugin, w.node ?? null, w.storyFolder),
+  );
   add("toggle-star", "Toggle star on this node", (w) => !!w.node, (w) => toggleStar(plugin, w.node!));
   add("set-label", "Set branch label…", (w) => !!w.node, (w) => setLabel(plugin, w.node!));
 

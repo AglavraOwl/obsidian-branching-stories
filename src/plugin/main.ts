@@ -22,6 +22,7 @@ import { SummaryService } from "./summaries";
 const LAST_ACTIVE_KEY = "branching-stories:last-active:";
 const BASE_URL_KEY = "branching-stories:base-url:";
 const RUNNING_KEY = "branching-stories:running";
+const COPIED_PROMPT_KEY = "branching-stories:copied-prompt";
 
 export default class BranchingStoriesPlugin extends Plugin {
   settings!: BSSettings;
@@ -179,6 +180,17 @@ export default class BranchingStoriesPlugin extends Plugin {
 
   providerConfig(kind: ProviderKind): ProviderConfig {
     return { kind, baseUrl: this.baseUrl(kind), apiKey: this.apiKey(kind) };
+  }
+
+  // ---- copied prompt (kept on this device) -------------------------------------------
+
+  copiedPrompt(): string | null {
+    const v = this.app.loadLocalStorage(COPIED_PROMPT_KEY);
+    return typeof v === "string" && v.trim() ? v : null;
+  }
+
+  setCopiedPrompt(text: string): void {
+    this.app.saveLocalStorage(COPIED_PROMPT_KEY, text);
   }
 
   // ---- generations started on this device -------------------------------------------

@@ -51,6 +51,18 @@ export class StorySidebar extends ItemView {
 
   /** Follow the open note; keep the last story when a non-story note is open. */
   private update(): void {
+    try {
+      this.refresh();
+    } catch (e) {
+      // Never leave the panel blank: say what went wrong.
+      console.error("[Branching Stories] sidebar failed", e);
+      this.contentEl.empty();
+      this.contentEl.createEl("p", { text: "The sidebar could not be drawn.", cls: "bs-empty" });
+      this.contentEl.createEl("p", { text: e instanceof Error ? e.message : String(e), cls: "bs-empty" });
+    }
+  }
+
+  private refresh(): void {
     const file = this.app.workspace.getActiveFile();
     if (file) {
       const meta = this.plugin.store.nodeOf(file);
@@ -123,6 +135,13 @@ export class StorySidebar extends ItemView {
     const box = el.createDiv({ cls: "bs-side-list" });
     if (!starred.length) box.createEl("p", { text: "Star a node to find it again here.", cls: "bs-empty" });
     for (const meta of starred) this.row(box, meta, { showBelow: true });
+
+    let count = 0;
+    for (const file of this.app.vault.getMarkdownFiles()) {
+      const m = idx.getByPath(file.path);
+      if (m && m.story === this.storyFolder) count++;
+    }
+    el.createEl("p", { text: `${count} nodes in this story`, cls: "bs-empty bs-side-foot" });
   }
 
   private row(parent: HTMLElement, meta: NodeMeta, opts: { number?: number; current?: boolean; showBelow?: boolean }): void {
@@ -144,13 +163,15 @@ export class StorySidebar extends ItemView {
     setIcon(tab, "external-link");
     tab.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      this.open(meta, true);
+      this.openRow(meta, true);
     });
 
-    row.addEventListener("click", (ev) => this.open(meta, ev.ctrlKey || ev.metaKey));
+    row.addEventListener("click", (ev) => this.openRow(meta, ev.ctrlKey || ev.metaKey));
   }
 
-  private open(meta: NodeMeta, newTab: boolean): void {
+  /** Named openRow on purpose: ItemView already has an internal `open` that Obsidian calls to attach the panel. */
+  private openRow(meta: NodeMeta, newTab: boolean): void {
+    if (this.plugin.inTransition()) return; // the tail end of the tap that opened the sidebar
     openNode(this.plugin, meta, newTab)
       .then(() => {
         // On a phone the sidebar is a drawer over the note: close it to show the chosen node.

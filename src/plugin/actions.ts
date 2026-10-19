@@ -36,7 +36,10 @@ export function positionText(info: NodeInfo): string {
 export async function openNode(plugin: BranchingStoriesPlugin, target: NodeMeta | TFile, newTab = false): Promise<void> {
   const file = target instanceof TFile ? target : plugin.store.fileFor(target);
   if (!file) {
-    new Notice("That note could not be found in the vault.");
+    const where = target instanceof TFile ? target.path : `${target.path} (node ${target.id})`;
+    console.error("[Branching Stories] note not found:", where);
+    new Notice(`That note could not be found in the vault: ${where}. The plugin's list of nodes was refreshed; try again.`, 8000);
+    plugin.store.rebuild();
     return;
   }
   await plugin.app.workspace.getLeaf(newTab ? "tab" : false).openFile(file);

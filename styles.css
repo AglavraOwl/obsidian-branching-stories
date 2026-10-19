@@ -313,3 +313,9 @@
 .is-mobile .bs-side-tab {
   padding: 8px;
 }
+
+
+.bs-side-foot {
+  margin-top: 14px;
+  font-size: var(--font-ui-smaller);
+}

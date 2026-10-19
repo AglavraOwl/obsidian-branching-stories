@@ -1,4 +1,4 @@
-import { Notice, Plugin, SecretComponent, TFile, WorkspaceLeaf, normalizePath, requestUrl } from "obsidian";
+import { Notice, Plugin, SecretComponent, TFile, normalizePath, requestUrl } from "obsidian";
 import {
   ClientDeps,
   fetchModels,
@@ -121,15 +121,56 @@ export default class BranchingStoriesPlugin extends Plugin {
     }, 120);
   }
 
+  /** When a menu, ribbon or command last opened something: taps right after it are ignored (see below). */
+  private transitionAt = 0;
+
+  markTransition(): void {
+    this.transitionAt = Date.now();
+  }
+
+  /**
+   * On a touch screen the end of the tap that picked a menu item can land on whatever appears under
+   * the finger a moment later (a sidebar row, a navigation button). Such taps are ignored.
+   */
+  inTransition(): boolean {
+    return Date.now() - this.transitionAt < 700;
+  }
+
   async activateSidebar(): Promise<void> {
+    this.markTransition();
     const { workspace } = this.app;
-    let leaf: WorkspaceLeaf | null = workspace.getLeavesOfType(SIDEBAR_VIEW_TYPE)[0] ?? null;
-    if (!leaf) {
-      leaf = workspace.getRightLeaf(false);
-      if (!leaf) return;
-      await leaf.setViewState({ type: SIDEBAR_VIEW_TYPE, active: true });
+    try {
+      const existing = workspace.getLeavesOfType(SIDEBAR_VIEW_TYPE);
+      // A panel left over from before an update or reload belongs to the old plugin and stays blank:
+      // keep only one that is really ours.
+      const ours = existing.find((l) => l.view instanceof StorySidebar) ?? null;
+      for (const l of existing) if (l !== ours) l.detach();
+
+      let leaf = ours;
+      if (!leaf) {
+        leaf = workspace.getRightLeaf(false);
+        if (!leaf) throw new Error("Could not create a panel in the right sidebar.");
+        await leaf.setViewState({ type: SIDEBAR_VIEW_TYPE, active: true });
+      }
+      await workspace.revealLeaf(leaf);
+      if (!(leaf.view instanceof StorySidebar)) {
+        throw new Error(`The story sidebar did not load (panel type "${leaf.view?.getViewType?.() ?? "unknown"}").`);
+      }
+    } catch (e) {
+      this.generation.report(e);
     }
-    await workspace.revealLeaf(leaf);
+  }
+
+  /** What the plugin currently knows, for the connection test. */
+  indexSummary(): string {
+    const index = this.store.index;
+    const stories = new Set<string>();
+    for (const file of this.app.vault.getMarkdownFiles()) {
+      const meta = index.getByPath(file.path);
+      if (meta) stories.add(meta.story);
+    }
+    const panels = this.app.workspace.getLeavesOfType(SIDEBAR_VIEW_TYPE).length;
+    return `${index.size} nodes in ${stories.size} stories · sidebar panels: ${panels}`;
   }
 
   // ---- settings -------------------------------------------------------------------

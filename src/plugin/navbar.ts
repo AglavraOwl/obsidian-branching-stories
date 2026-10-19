@@ -22,6 +22,7 @@ export function buildNavBar(plugin: BranchingStoriesPlugin, meta: NodeMeta): HTM
   const run = (fn: () => Promise<void>) => (ev: Event) => {
     ev.preventDefault();
     ev.stopPropagation();
+    if (plugin.inTransition()) return; // the tail end of the tap that opened a menu or the sidebar
     fn().catch((e) => plugin.generation.report(e));
   };
 

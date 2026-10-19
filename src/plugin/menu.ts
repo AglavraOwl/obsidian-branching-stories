@@ -82,5 +82,8 @@ export async function showStoryMenu(plugin: BranchingStoriesPlugin): Promise<voi
   add("Test connection", () => runConnectionTest(plugin));
 
   const chosen = await new ChoiceModal<MenuItem>(plugin.app, items, (i) => i.label, "Story actions").openAndWait();
-  if (chosen) await chosen.run();
+  if (chosen) {
+    plugin.markTransition();
+    await chosen.run();
+  }
 }

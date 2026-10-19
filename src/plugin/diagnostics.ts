@@ -31,6 +31,7 @@ export async function runConnectionTest(plugin: BranchingStoriesPlugin): Promise
     `Screen: ${window.innerWidth} × ${window.innerHeight}`,
     `Provider: ${label} · ${provider.baseUrl}`,
     `Model: ${cfg.model || "(none selected)"} · streaming setting: ${plugin.settings.streaming}`,
+    `Plugin index: ${plugin.indexSummary()}`,
     "",
   ];
   const notice = new Notice("Testing the connection…", 0);

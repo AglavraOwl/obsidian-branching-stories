@@ -29,6 +29,16 @@ export function stripLinks(text: string): string {
   );
 }
 
+/** Remove links altogether (for text where a note's name would read as content). */
+export function removeLinks(text: string): string {
+  return text.replace(LINK_RE, "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n");
+}
+
+/** Drop a leading heading line, e.g. from a `[[Note#Heading]]` section used as plain text. */
+export function stripLeadingHeading(text: string): string {
+  return text.replace(/^#{1,6}[ \t]+.*(?:\n|$)/, "").trim();
+}
+
 /** Stable key so the same note/section is only included once. */
 export function linkKey(link: WikiLink): string {
   return `${link.target.toLowerCase()}#${(link.heading ?? "").toLowerCase()}`;

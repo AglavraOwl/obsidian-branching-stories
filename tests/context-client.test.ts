@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildContext, PathTurn } from "../src/core/context";
+import { buildContext, PathTurn, STYLE_INSTRUCTION } from "../src/core/context";
 import { WikiLink } from "../src/core/links";
 import {
   chatCompletion,
@@ -105,6 +105,80 @@ describe("context assembly", () => {
     });
     expect(ctx.messages[0].content).toContain("FULL1");
     expect(ctx.warnings.some((w) => w.includes("No summary"))).toBe(true);
+  });
+
+  describe("style sample", () => {
+    const styled = { ...story, style: "Short lines. Cold air.\n\n[[Voice]]" };
+    const purposes: (string | undefined)[] = [];
+    const resolveStyle = async (l: WikiLink, purpose?: "lore" | "style") => {
+      purposes.push(purpose);
+      return l.target === "Voice" ? { title: "Voice", text: "Rain fell. Nobody spoke." } : null;
+    };
+
+    it("goes in the final user message after the log, before the prompt, with the instruction, text and linked note but not the link name", async () => {
+      const ctx = await buildContext({
+        story: styled,
+        turns: [turn("1", "p1", "o1", "S1"), turn("2", "p2", "o2")],
+        newPrompt: "p3",
+        recentTurns: 1,
+        resolveNote: resolveStyle,
+      });
+      const sys = ctx.messages[0].content;
+      const last = ctx.messages.at(-1)!;
+      expect(sys).not.toContain("style_sample");
+      expect(ctx.messages.map((m) => m.role)).toEqual(["system", "user", "assistant", "user"]);
+      expect(last.content.startsWith("<style_sample>\n" + STYLE_INSTRUCTION)).toBe(true);
+      expect(last.content).toContain("Short lines. Cold air.\n\nRain fell. Nobody spoke.");
+      expect(last.content).not.toContain("Voice\n");
+      expect(last.content.endsWith("</style_sample>\n\np3")).toBe(true);
+      expect(purposes).toContain("style");
+      expect(ctx.parts.map((p) => p.label).slice(-2)).toEqual(["Style sample", "New prompt"]);
+      expect(ctx.linkedNotes).toEqual([{ title: "Voice", tokens: expect.any(Number), source: "style sample" }]);
+      expect(sys.startsWith("SYS")).toBe(true); // the system prompt text itself is untouched
+    });
+
+    it("before-log puts it last in the system message", async () => {
+      const ctx = await buildContext({
+        story: { ...styled, stylePosition: "before-log" },
+        turns: [turn("1", "p1", "o1", "S1"), turn("2", "p2", "o2")],
+        newPrompt: "p3",
+        recentTurns: 1,
+        resolveNote: resolveStyle,
+      });
+      const sys = ctx.messages[0].content;
+      expect(sys.indexOf("<story_so_far>")).toBeLessThan(sys.indexOf("<style_sample>"));
+      expect(sys.trimEnd().endsWith("</style_sample>")).toBe(true);
+      expect(ctx.messages.at(-1)!.content).toBe("p3");
+    });
+
+    it("can go right after the system prompt", async () => {
+      const ctx = await buildContext({
+        story: { ...styled, stylePosition: "start" },
+        turns: [],
+        newPrompt: "p1",
+        recentTurns: Infinity,
+        resolveNote: resolveStyle,
+      });
+      const sys = ctx.messages[0].content;
+      expect(sys.indexOf("SYS")).toBeLessThan(sys.indexOf("<style_sample>"));
+      expect(sys.indexOf("<style_sample>")).toBeLessThan(sys.indexOf("<lore>"));
+      expect(ctx.messages.at(-1)!.content).toBe("p1");
+    });
+
+    it("is absent when empty and warns when a link cannot be found", async () => {
+      const none = await buildContext({ story, turns: [], newPrompt: "p1", recentTurns: Infinity, resolveNote });
+      expect(none.messages[0].content).not.toContain("style_sample");
+      expect(none.parts.map((p) => p.label)).not.toContain("Style sample");
+      const missing = await buildContext({
+        story: { ...story, lore: "", style: "[[Ghost]]" },
+        turns: [],
+        newPrompt: "p1",
+        recentTurns: Infinity,
+        resolveNote: resolveStyle,
+      });
+      expect(missing.messages[0].content).not.toContain("style_sample");
+      expect(missing.warnings).toEqual(["Linked note not found: [[Ghost]] (style sample)."]);
+    });
   });
 });
 

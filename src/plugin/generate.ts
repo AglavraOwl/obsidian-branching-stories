@@ -2,7 +2,7 @@ import { Notice, Platform, TFile, normalizePath, parseYaml } from "obsidian";
 import { chatCompletion, ProviderError, ProviderKind, Usage } from "../api/client";
 import { BuiltContext, buildContext, PathTurn } from "../core/context";
 import { makeFileName, makeTimestamp, makeTitle, makeUniqueId, makeWikilink } from "../core/ids";
-import { noteTextForContext } from "../core/links";
+import { noteTextForContext, stripLeadingHeading } from "../core/links";
 import { NodeFrontmatter, NodeSections, NodeStatus, serializeNode, splitFrontmatter } from "../core/nodeDoc";
 import {
   linksFromLoreProperty,
@@ -10,6 +10,8 @@ import {
   overridesFromFrontmatter,
   parseStoryBody,
   StoryDoc,
+  StylePosition,
+  stylePositionFromFrontmatter,
 } from "../core/storyDoc";
 import { evaluateSummary, isUsable } from "../core/summary";
 import { NodeMeta } from "../core/tree";
@@ -42,6 +44,7 @@ export interface StoryData {
   rootFile: TFile;
   fm: Record<string, unknown>;
   story: StoryDoc;
+  stylePosition: StylePosition;
   config: EffectiveConfig;
 }
 
@@ -107,6 +110,7 @@ export class GenerationController {
       rootFile,
       fm,
       story: parseStoryBody(body),
+      stylePosition: stylePositionFromFrontmatter(fm),
       config: this.plugin.effectiveConfig(overridesFromFrontmatter(fm)),
     };
   }
@@ -121,7 +125,7 @@ export class GenerationController {
     prompt: string,
     mode: "send" | "preview",
   ): Promise<PreparedContext> {
-    const { rootFile, fm, story, config } = data;
+    const { rootFile, fm, story, stylePosition, config } = data;
     const store = this.plugin.store;
     const recentTurns = config.recentTurns > 0 ? config.recentTurns : Infinity;
 
@@ -161,21 +165,25 @@ export class GenerationController {
         lore: story.lore,
         loreLinks: linksFromLoreProperty(fm.lore),
         pinned: story.pinned,
+        style: story.style,
+        stylePosition,
       },
       turns,
       newPrompt: prompt,
       recentTurns,
-      resolveNote: async (link) => {
+      resolveNote: async (link, purpose) => {
         const dest = this.app.metadataCache.getFirstLinkpathDest(link.target, rootFile.path);
         if (!dest || dest.extension !== "md") return null;
         const cfg = this.plugin.settings;
+        const style = purpose === "style";
         const text = noteTextForContext(await this.app.vault.cachedRead(dest), {
           heading: link.heading,
-          includeFrontmatter: cfg.includeFrontmatter,
+          // A style sample is prose only: no properties, no section heading line.
+          includeFrontmatter: cfg.includeFrontmatter && !style,
           ignoreKeys: cfg.frontmatterIgnore.split(","),
         });
         if (text === null) return null;
-        return { title: dest.basename, text };
+        return { title: dest.basename, text: style && link.heading ? stripLeadingHeading(text) : text };
       },
     });
     return { config, context };

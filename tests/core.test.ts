@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { idFromLink, makeId, makeTitle, makeUniqueId } from "../src/core/ids";
 import { parseBody, replaceSection, serializeNode, splitFrontmatter } from "../src/core/nodeDoc";
-import { extractHeadingSection, extractLinks, stripLinks } from "../src/core/links";
+import { extractHeadingSection, extractLinks, removeLinks, stripLeadingHeading, stripLinks } from "../src/core/links";
 import { emitYaml } from "../src/core/yaml";
 import { NodeMeta, TreeIndex } from "../src/core/tree";
-import { parseStoryBody } from "../src/core/storyDoc";
+import { newStoryNote, parseStoryBody, stylePositionFromFrontmatter } from "../src/core/storyDoc";
 
 describe("ids", () => {
   it("formats YYMMDD-HHMM-xx", () => {
@@ -103,13 +103,31 @@ describe("links", () => {
     const note = "# Atka\nintro\n## Looks\ngrey hair\n### Eyes\nblue\n## Past\nold";
     expect(extractHeadingSection(note, "Looks")).toBe("## Looks\ngrey hair\n### Eyes\nblue");
     expect(extractHeadingSection(note, "Nope")).toBeNull();
+    expect(removeLinks("Short.\n\n[[My voice]]\n\n\nMore [[A|b]] text.")).toBe("Short.\n\nMore  text.");
+    expect(stripLeadingHeading("## Looks\ngrey hair")).toBe("grey hair");
+    expect(stripLeadingHeading("no heading")).toBe("no heading");
   });
 });
 
 describe("story root", () => {
   it("parses sections", () => {
     const doc = parseStoryBody("# Name\n<!-- c -->\n## System prompt\nBe a writer.\n\n## Lore\nWorld A.\n\n## Pinned details\n- x\n## Other\nignored");
-    expect(doc).toEqual({ systemPrompt: "Be a writer.", lore: "World A.", pinned: "- x" });
+    expect(doc).toEqual({ systemPrompt: "Be a writer.", lore: "World A.", pinned: "- x", style: "" });
+  });
+
+  it("parses the style sample section and the style_position property", () => {
+    const doc = parseStoryBody("# N\n## Lore\nW\n## Style sample\nShort lines.\n\n[[My voice]]\n");
+    expect(doc.style).toBe("Short lines.\n\n[[My voice]]");
+    expect(stylePositionFromFrontmatter({ style_position: " Start " })).toBe("start");
+    expect(stylePositionFromFrontmatter({ style_position: "Before-Log" })).toBe("before-log");
+    expect(stylePositionFromFrontmatter({ style_position: "middle" })).toBe("end");
+    expect(stylePositionFromFrontmatter(undefined)).toBe("end");
+  });
+
+  it("new story template has an empty style sample section that is sent as nothing", () => {
+    const body = newStoryNote("S").replace(/^---[\s\S]*?\n---\n/, "");
+    expect(body).toContain("## Style sample");
+    expect(parseStoryBody(body).style).toBe("");
   });
 });
 

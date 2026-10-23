@@ -1,4 +1,4 @@
-import { extractLinks, linkKey, stripLinks, uniqueLinks, WikiLink } from "./links";
+import { extractLinks, linkKey, removeLinks, stripLinks, uniqueLinks, WikiLink } from "./links";
 import { estimateTokens } from "./tokens";
 
 export interface ChatMessage {
@@ -22,7 +22,18 @@ export interface StoryContextInput {
   lore: string;
   loreLinks: WikiLink[];
   pinned: string;
+  /** Style sample section: text and/or links. Links are replaced by the linked note's text. */
+  style?: string;
+  /**
+   * Where the style block goes: "end" (default) in the final user message just before the new
+   * prompt, i.e. after the recent turns; "before-log" at the end of the system message; "start"
+   * right after the system prompt.
+   */
+  stylePosition?: "start" | "before-log" | "end";
 }
+
+export const STYLE_INSTRUCTION =
+  "Use the sample below only as a guide to the style of your prose: voice, rhythm, sentence length and level of detail. Do not reuse its content, names or events.";
 
 export interface ResolvedNote {
   title: string;
@@ -36,7 +47,8 @@ export interface ContextInput {
   newPrompt: string;
   /** Number of most recent turns sent verbatim. Use Infinity to send everything. */
   recentTurns: number;
-  resolveNote: (link: WikiLink) => Promise<ResolvedNote | null>;
+  /** `purpose` tells the resolver what the text is for (a style sample needs no properties). */
+  resolveNote: (link: WikiLink, purpose?: "lore" | "style") => Promise<ResolvedNote | null>;
 }
 
 export interface ContextPart {
@@ -60,7 +72,8 @@ const escapeAttr = (s: string): string => s.replace(/"/g, "'");
  * Build the messages sent for a new node, in this order:
  * system prompt, lore (+ linked lore notes), pinned details, reference notes linked from
  * recent prompts and "keep in mind" lists, branch details, story so far (summaries of older
- * turns), recent turns verbatim, new prompt.
+ * turns), recent turns verbatim, new prompt. The style sample goes in the final user message
+ * before the new prompt by default (see `stylePosition` for the alternatives in the system message).
  */
 export async function buildContext(input: ContextInput): Promise<BuiltContext> {
   const warnings: string[] = [];
@@ -109,6 +122,24 @@ export async function buildContext(input: ContextInput): Promise<BuiltContext> {
   refLinks.push(...extractLinks(newPrompt));
   const refBlocks = await resolveAll(refLinks, "prompt / keep in mind");
 
+  // The style sample is taken apart from the other notes: its own text without link names,
+  // then the body of every linked note.
+  const styleSamples: string[] = [];
+  const styleText = removeLinks(story.style ?? "").trim();
+  if (styleText) styleSamples.push(styleText);
+  for (const link of uniqueLinks(extractLinks(story.style ?? ""))) {
+    const note = await input.resolveNote(link, "style");
+    if (!note) {
+      warnings.push(`Linked note not found: ${link.raw} (style sample).`);
+      continue;
+    }
+    const title = link.heading ? `${note.title} > ${link.heading}` : note.title;
+    if (note.text.trim()) {
+      styleSamples.push(note.text.trim());
+      linkedNotes.push({ title, tokens: estimateTokens(note.text), source: "style sample" });
+    }
+  }
+
   // ---- system message ---------------------------------------------------
   const parts: ContextPart[] = [];
   const sys: string[] = [];
@@ -116,9 +147,17 @@ export async function buildContext(input: ContextInput): Promise<BuiltContext> {
     if (!text.trim()) return;
     parts.push({ label, tokens: estimateTokens(text) });
   };
+  const styleBody = styleSamples.length ? `${STYLE_INSTRUCTION}\n\n${styleSamples.join("\n\n")}` : "";
+  const stylePosition = story.stylePosition ?? "end";
+  const addStyleToSystem = (): void => {
+    if (!styleBody) return;
+    sys.push(tag("style_sample", styleBody));
+    addPart("Style sample", styleBody);
+  };
 
   addPart("System prompt", story.systemPrompt);
   if (story.systemPrompt.trim()) sys.push(story.systemPrompt.trim());
+  if (stylePosition === "start") addStyleToSystem();
 
   const loreSection = [loreText, ...loreBlocks].filter((s) => s.trim()).join("\n\n");
   if (loreSection) {
@@ -160,6 +199,8 @@ export async function buildContext(input: ContextInput): Promise<BuiltContext> {
     addPart("Story so far (summaries)", body);
   }
 
+  if (stylePosition === "before-log") addStyleToSystem();
+
   const messages: ChatMessage[] = [];
   if (sys.length) messages.push({ role: "system", content: sys.join("\n\n") });
 
@@ -173,7 +214,11 @@ export async function buildContext(input: ContextInput): Promise<BuiltContext> {
   if (recentTokens) parts.push({ label: `Recent turns (${recent.length})`, tokens: recentTokens });
 
   const finalPrompt = stripLinks(newPrompt).trim();
-  messages.push({ role: "user", content: finalPrompt });
+  // After the log the sample travels in the last user message (a system message in the middle of
+  // a chat is not understood by every model), ahead of the prompt so the prompt stays last.
+  const styleInPrompt = stylePosition === "end" && styleBody ? tag("style_sample", styleBody) : "";
+  if (styleInPrompt) parts.push({ label: "Style sample", tokens: estimateTokens(styleBody) });
+  messages.push({ role: "user", content: styleInPrompt ? `${styleInPrompt}\n\n${finalPrompt}` : finalPrompt });
   parts.push({ label: "New prompt", tokens: estimateTokens(finalPrompt) });
 
   const totalTokens = parts.reduce((sum, p) => sum + p.tokens, 0);

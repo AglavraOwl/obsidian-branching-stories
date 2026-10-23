@@ -94,7 +94,7 @@ export class HeaderActions {
         if (w.node) plugin.generation.stop(w.node);
       });
       if (!Platform.isPhone) {
-        add("pencil", "Edit prompt and regenerate", async () => {
+        add("square-dashed-text", "Edit prompt and regenerate", async () => {
           const w = here();
           if (w.node) await editAndRegenerate(plugin, w.node);
         });
@@ -104,9 +104,9 @@ export class HeaderActions {
         });
       }
     }
-    add("plus", att.kind === "node" ? "New node from here" : "Write the first node", async () => newNode(plugin, here()));
+    add("feather", att.kind === "node" ? "New node from here" : "Write the first node", async () => newNode(plugin, here()));
     // No hotkeys or easy command palette on mobile: one button opens a list of every action.
-    if (Platform.isMobile) add("more-horizontal", "Story menu", () => showStoryMenu(plugin));
+    if (Platform.isMobile) add("scroll-text", "Story menu", () => showStoryMenu(plugin));
   }
 }
 

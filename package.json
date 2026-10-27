@@ -1,6 +1,6 @@
 {
   "name": "obsidian-branching-stories",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Generate and explore branching stories in Obsidian: one note per turn, linked into a tree.",
   "main": "main.js",
   "private": true,

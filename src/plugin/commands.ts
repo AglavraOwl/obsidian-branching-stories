@@ -44,16 +44,24 @@ export function whereAmI(plugin: BranchingStoriesPlugin): Where | null {
 /** Prompt dialog, then generate a child of the open node (or the first node from the story root). */
 export async function newNode(plugin: BranchingStoriesPlugin, w: Where): Promise<void> {
   const key = draftKey(w.storyFolder, w.node?.id ?? null, "new");
-  const prompt = await new PromptModal(plugin.app, {
+  const modal = new PromptModal(plugin.app, {
     title: w.node ? "Next prompt" : "First prompt",
     submitLabel: "Generate",
     placeholder: "What happens next? You can link notes with [[Note name]] to include them.",
     draftKey: key,
     choices: () => promptChoices(plugin, continuationSources(plugin.store.index, w.storyFolder, w.node ?? null)),
     copied: plugin.copiedPrompt(),
-  }).open();
+    generation: await generationChoice(plugin, w.storyFolder),
+  });
+  const prompt = await modal.open();
   if (!prompt) return;
-  const file = await plugin.generation.run({ storyFolder: w.storyFolder, parent: w.node ?? null, prompt, regenOf: null });
+  const file = await plugin.generation.run({
+    storyFolder: w.storyFolder,
+    parent: w.node ?? null,
+    prompt,
+    regenOf: null,
+    override: modal.override,
+  });
   // Keep the text until a node exists: if the model or key was wrong, the prompt is not lost.
   if (file) clearDraft(plugin.app, key);
 }
@@ -70,13 +78,27 @@ export async function regenerate(plugin: BranchingStoriesPlugin, node: NodeMeta)
     new Notice("This node has no prompt text to regenerate.");
     return;
   }
+  // The same model as the node being replaced (its properties), not whatever is configured now.
+  const fm = loaded.frontmatter;
+  const recorded = fm.provider === "openrouter" || fm.provider === "lmstudio" ? fm.provider : undefined;
   await plugin.generation.run({
     storyFolder: node.story,
     parent: plugin.store.index.parentOf(node) ?? null,
     prompt: loaded.sections.prompt,
     regenOf: plugin.store.index.originalId(node),
     keep: loaded.sections.keep,
+    override: recorded && typeof fm.model === "string" ? { provider: recorded, model: fm.model } : undefined,
   });
+}
+
+/** Model and thinking the prompt window starts from: the story's configuration. Undefined if the story cannot be read (the run reports why). */
+async function generationChoice(plugin: BranchingStoriesPlugin, storyFolder: string) {
+  try {
+    const { config } = await plugin.generation.loadStory(storyFolder);
+    return { plugin, provider: config.provider, model: config.model, reasoning: config.reasoning };
+  } catch {
+    return undefined;
+  }
 }
 
 export async function editAndRegenerate(plugin: BranchingStoriesPlugin, node: NodeMeta): Promise<void> {
@@ -84,14 +106,16 @@ export async function editAndRegenerate(plugin: BranchingStoriesPlugin, node: No
   if (!file) return;
   const loaded = await plugin.store.load(file);
   const key = draftKey(node.story, node.id, "edit");
-  const prompt = await new PromptModal(plugin.app, {
+  const modal = new PromptModal(plugin.app, {
     title: "Edit prompt (creates a new version)",
     initial: loaded.sections.prompt,
     submitLabel: "Generate",
     draftKey: key,
     choices: () => promptChoices(plugin, versionSources(plugin.store.index, node)),
     copied: plugin.copiedPrompt(),
-  }).open();
+    generation: await generationChoice(plugin, node.story),
+  });
+  const prompt = await modal.open();
   if (!prompt) return;
   const created = await plugin.generation.run({
     storyFolder: node.story,
@@ -99,6 +123,7 @@ export async function editAndRegenerate(plugin: BranchingStoriesPlugin, node: No
     prompt,
     regenOf: null,
     keep: loaded.sections.keep,
+    override: modal.override,
   });
   if (created) clearDraft(plugin.app, key);
 }

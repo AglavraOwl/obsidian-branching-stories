@@ -92,6 +92,8 @@ See the answer given on 2026-10-23: models have no exact sense of length; the re
 - When a reply is cut off by the limit (`finish_reason: length`, already detected): a "Continue" action that asks the model to carry on from where the text stopped.
 - A per-story default length in the story note.
 
-## Quick model switch in the prompt window (filed 2026-10-23)
+## Quick model switch in the prompt window (filed 2026-10-23; built in 0.3.6, see STATUS.md)
+
+Built for the New prompt and Edit prompt windows only. Plain Regenerate keeps the node's recorded model and has no picker (author's decision, 2026-10-27).
 
 Star models in the big model list (the star toggle lives in the picker, not only in settings), and show a model chip in the prompt window that offers the starred models first plus "More models…". The choice applies to that generation only and is recorded in the node. This is the same feature as "Regenerate with another model" (planned for 0.3.4); do them together, for new nodes, regenerations and prompt edits.

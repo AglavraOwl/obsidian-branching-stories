@@ -3,6 +3,7 @@ import { chatCompletion, ProviderError, ProviderKind, Usage } from "../api/clien
 import { BuiltContext, buildContext, PathTurn } from "../core/context";
 import { makeFileName, makeTimestamp, makeTitle, makeUniqueId, makeWikilink } from "../core/ids";
 import { noteTextForContext, stripLeadingHeading } from "../core/links";
+import { applyOverride, GenerationOverride } from "../core/modelChoice";
 import { NodeFrontmatter, NodeSections, NodeStatus, serializeNode, splitFrontmatter } from "../core/nodeDoc";
 import {
   linksFromLoreProperty,
@@ -28,6 +29,8 @@ export interface GenerateParams {
   regenOf: string | null;
   /** "Keep in mind" text carried over from the node being replaced. */
   keep?: string;
+  /** Model and thinking for this generation only; summaries keep using the story's configuration. */
+  override?: GenerationOverride<ProviderKind>;
 }
 
 export interface EffectiveConfig {
@@ -124,13 +127,15 @@ export class GenerationController {
     parent: NodeMeta | null,
     prompt: string,
     mode: "send" | "preview",
+    override?: GenerationOverride<ProviderKind>,
   ): Promise<PreparedContext> {
-    const { rootFile, fm, story, stylePosition, config } = data;
+    const { rootFile, fm, story, stylePosition } = data;
+    const config = applyOverride(data.config, override);
     const store = this.plugin.store;
     const recentTurns = config.recentTurns > 0 ? config.recentTurns : Infinity;
 
     if (mode === "send" && Number.isFinite(recentTurns)) {
-      await this.plugin.summaries.ensureForPath(parent, recentTurns, config);
+      await this.plugin.summaries.ensureForPath(parent, recentTurns, data.config);
     }
 
     const turns: PathTurn[] = [];
@@ -197,12 +202,13 @@ export class GenerationController {
     let prepared: PreparedContext;
     try {
       const data = await this.loadStory(params.storyFolder);
-      await plugin.ensureModel(data.config.provider, data.config.model);
-      const key = plugin.providerConfig(data.config.provider);
-      if (data.config.provider === "openrouter" && !key.apiKey) {
+      const chosen = applyOverride(data.config, params.override);
+      await plugin.ensureModel(chosen.provider, chosen.model);
+      const key = plugin.providerConfig(chosen.provider);
+      if (chosen.provider === "openrouter" && !key.apiKey) {
         throw new Error("OpenRouter API key is not set. Add it in the plugin settings.");
       }
-      prepared = await this.prepare(data, params.parent, params.prompt, "send");
+      prepared = await this.prepare(data, params.parent, params.prompt, "send", params.override);
     } catch (e) {
       if (e instanceof SummaryCancelled) {
         new Notice("Cancelled. Nothing was generated.");

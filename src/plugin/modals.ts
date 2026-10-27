@@ -1,5 +1,6 @@
-import { App, FuzzySuggestModal, Modal, Notice, Platform, Setting } from "obsidian";
+import { App, FuzzyMatch, FuzzySuggestModal, Menu, Modal, Notice, Platform, Setting, setIcon } from "obsidian";
 import { PROVIDER_LABEL, ProviderKind } from "../api/client";
+import { chipModels, GenerationOverride, toggleFavorite } from "../core/modelChoice";
 import type BranchingStoriesPlugin from "./main";
 
 /** A prompt that can be dropped into the prompt window. */
@@ -51,9 +52,76 @@ export class PromptModal extends Modal {
       choices?: () => Promise<PromptChoice[]>;
       /** A prompt copied earlier with "Copy prompt of this node". */
       copied?: string | null;
+      /** Shows the model chip and the thinking toggle, starting from these values. */
+      generation?: { plugin: BranchingStoriesPlugin; provider: ProviderKind; model: string; reasoning: boolean };
     },
   ) {
     super(app);
+    this.model = opts.generation?.model ?? "";
+    this.thinking = opts.generation?.reasoning ?? false;
+  }
+
+  private model: string;
+  private thinking: boolean;
+
+  /** Model and thinking chosen in the window, for this generation only. */
+  get override(): GenerationOverride<ProviderKind> | undefined {
+    const g = this.opts.generation;
+    return g ? { provider: g.provider, model: this.model, reasoning: this.thinking } : undefined;
+  }
+
+  /** The row above the text box: model chip (starred models first) and the thinking toggle. */
+  private renderSettings(parent: HTMLElement): void {
+    const g = this.opts.generation;
+    if (!g) return;
+    const row = parent.createDiv({ cls: "bs-gen-row" });
+
+    const chip = row.createEl("button", { cls: "bs-chip bs-model-chip" });
+    const paintChip = (): void => {
+      chip.empty();
+      chip.createSpan({ cls: "bs-chip-text", text: this.model || "No model selected" });
+      setIcon(chip.createSpan({ cls: "bs-chip-icon" }), "chevron-down");
+    };
+    paintChip();
+    chip.addEventListener("click", (ev) => {
+      const menu = new Menu();
+      for (const slug of chipModels(g.plugin.settings.favorites[g.provider], this.model)) {
+        menu.addItem((item) =>
+          item
+            .setTitle(slug)
+            .setChecked(slug === this.model)
+            .onClick(() => {
+              this.model = slug;
+              paintChip();
+            }),
+        );
+      }
+      menu.addSeparator();
+      menu.addItem((item) =>
+        item.setTitle("More models…").setIcon("search").onClick(async () => {
+          const picked = await pickModel(this.app, g.plugin, g.provider);
+          if (picked) {
+            this.model = picked;
+            paintChip();
+          }
+        }),
+      );
+      menu.showAtMouseEvent(ev);
+    });
+
+    const think = row.createEl("button", { cls: "bs-chip bs-think-chip" });
+    const paintThink = (): void => {
+      think.empty();
+      think.toggleClass("mod-cta", this.thinking);
+      think.setAttr("aria-pressed", String(this.thinking));
+      setIcon(think.createSpan({ cls: "bs-chip-icon" }), "brain");
+      think.createSpan({ text: this.thinking ? "Thinking: on" : "Thinking: off" });
+    };
+    paintThink();
+    think.addEventListener("click", () => {
+      this.thinking = !this.thinking;
+      paintThink();
+    });
   }
 
   private saveDraft(): void {
@@ -81,6 +149,8 @@ export class PromptModal extends Modal {
     const draft = this.opts.draftKey ? this.app.loadLocalStorage(this.opts.draftKey) : null;
     const restored = typeof draft === "string" && draft.trim() !== "" && draft !== initial;
     const restoredNote = restored ? contentEl.createDiv({ cls: "setting-item-description bs-draft-note" }) : null;
+
+    this.renderSettings(contentEl);
 
     const reuseRow = this.opts.choices || this.opts.copied ? contentEl.createDiv({ cls: "bs-reuse" }) : null;
 
@@ -313,9 +383,34 @@ export class ChoiceModal<T> extends FuzzySuggestModal<T> {
     private items: T[],
     private labelOf: (item: T) => string,
     placeholder: string,
+    /** Adds a star button to each row that toggles without choosing the row. */
+    private star?: { isStarred: (item: T) => boolean; toggle: (item: T) => Promise<void> },
   ) {
     super(app);
     this.setPlaceholder(placeholder);
+  }
+
+  renderSuggestion(match: FuzzyMatch<T>, el: HTMLElement): void {
+    super.renderSuggestion(match, el);
+    const star = this.star;
+    if (!star) return;
+    el.addClass("bs-star-row");
+    const btn = el.createSpan({ cls: "bs-star-btn", attr: { "aria-label": "Star this model" } });
+    const paint = (): void => {
+      const on = star.isStarred(match.item);
+      btn.toggleClass("is-starred", on);
+      setIcon(btn, "star");
+    };
+    paint();
+    const swallow = (ev: Event): void => {
+      ev.stopPropagation();
+      ev.preventDefault();
+    };
+    btn.addEventListener("mousedown", swallow);
+    btn.addEventListener("click", (ev) => {
+      swallow(ev);
+      star.toggle(match.item).then(paint, () => undefined);
+    });
   }
 
   openAndWait(): Promise<T | null> {
@@ -411,10 +506,11 @@ export async function pickModel(app: App, plugin: BranchingStoriesPlugin, kind: 
     new Notice(`${PROVIDER_LABEL[kind]} returned no models.`);
     return null;
   }
-  return new ChoiceModal<string>(
-    app,
-    items,
-    (id) => (favorites.includes(id) ? `★ ${id}` : id),
-    `Search ${PROVIDER_LABEL[kind]} models`,
-  ).openAndWait();
+  return new ChoiceModal<string>(app, items, (id) => id, `Search ${PROVIDER_LABEL[kind]} models`, {
+    isStarred: (id) => plugin.settings.favorites[kind].includes(id),
+    toggle: async (id) => {
+      plugin.settings.favorites[kind] = toggleFavorite(plugin.settings.favorites[kind], id);
+      await plugin.saveSettings();
+    },
+  }).openAndWait();
 }

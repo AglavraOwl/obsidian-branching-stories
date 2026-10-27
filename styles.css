@@ -271,6 +271,73 @@
   margin-bottom: 6px;
 }
 
+/* ---- model chip and thinking toggle in the prompt window ---- */
+.bs-gen-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.bs-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  height: auto;
+  min-height: 30px;
+  padding: 4px 10px;
+  border-radius: 14px;
+  font-size: var(--font-ui-small);
+}
+
+.bs-model-chip {
+  flex: 1 1 12em;
+}
+
+.bs-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bs-chip-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.is-mobile .bs-chip {
+  min-height: 40px;
+}
+
+/* ---- star button in the model list ---- */
+.bs-star-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.bs-star-btn {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 2px 4px;
+  color: var(--text-faint);
+}
+
+.bs-star-btn.is-starred {
+  color: var(--text-accent);
+}
+
+.bs-star-btn.is-starred svg {
+  fill: currentColor;
+}
+
+.is-mobile .bs-star-btn {
+  padding: 8px;
+}
+
 /* ---- reuse a prompt ---- */
 .bs-reuse {
   display: flex;

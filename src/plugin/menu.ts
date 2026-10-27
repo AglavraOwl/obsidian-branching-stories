@@ -15,6 +15,7 @@ import {
 } from "./actions";
 import { editAndRegenerate, newNode, regenerate, whereAmI } from "./commands";
 import { runConnectionTest } from "./diagnostics";
+import { openFragmentsTable, saveSelectionAsFragment } from "./fragments";
 import type BranchingStoriesPlugin from "./main";
 import { ChoiceModal } from "./modals";
 import { SummaryCancelled } from "./summaries";
@@ -62,6 +63,7 @@ export async function showStoryMenu(plugin: BranchingStoriesPlugin): Promise<voi
 
     add(node.starred ? "Remove star" : "Star this node", () => toggleStar(plugin, node));
     add(node.label ? `Change label (${node.label})` : "Set branch label…", () => setLabel(plugin, node));
+    add("Save selected text as fragment", () => saveSelectionAsFragment(plugin, w));
     add("Compile path to note", () => compilePath(plugin, node));
     add("Regenerate summary of this node", async () => {
       try {
@@ -78,6 +80,8 @@ export async function showStoryMenu(plugin: BranchingStoriesPlugin): Promise<voi
   const lastId = plugin.lastActiveId(w.storyFolder);
   const last = lastId ? plugin.store.index.get(w.storyFolder, lastId) : undefined;
   if (last && last.id !== node?.id) add("Go to the last active node", () => openNode(plugin, last));
+  add("Fragments table of this story", () => openFragmentsTable(plugin, w.storyFolder));
+  add("Table of all fragments", () => openFragmentsTable(plugin, null));
   add("Open story sidebar", () => plugin.activateSidebar());
   add("Test connection", () => runConnectionTest(plugin));
 

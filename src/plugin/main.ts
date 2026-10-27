@@ -11,6 +11,7 @@ import { displayStatus, DisplayStatus } from "../core/status";
 import { StoryOverrides } from "../core/storyDoc";
 import { NodeMeta } from "../core/tree";
 import { registerCommands } from "./commands";
+import { saveFragment, SelectionTracker } from "./fragments";
 import { EffectiveConfig, GenerationController } from "./generate";
 import { BSSettings, BSSettingTab, mergeSettings } from "./settings";
 import { HeaderActions } from "./headerActions";
@@ -29,6 +30,7 @@ export default class BranchingStoriesPlugin extends Plugin {
   store!: StoryStore;
   generation!: GenerationController;
   summaries!: SummaryService;
+  selection!: SelectionTracker;
   private headerActions!: HeaderActions;
   private uiTimer: number | null = null;
   private statusEl: HTMLElement | null = null;
@@ -54,9 +56,26 @@ export default class BranchingStoriesPlugin extends Plugin {
     this.generation = new GenerationController(this);
     this.summaries = new SummaryService(this);
     this.headerActions = new HeaderActions(this);
+    this.selection = new SelectionTracker(this);
+    this.selection.start();
 
     this.addSettingTab(new BSSettingTab(this.app, this));
     registerCommands(this);
+
+    // Right-click (and, where Obsidian offers it, long-press) menu of the editor.
+    this.registerEvent(
+      this.app.workspace.on("editor-menu", (menu, editor, info) => {
+        const node = info.file ? this.store.nodeOf(info.file) : undefined;
+        const selected = editor.getSelection();
+        if (!node || !selected.trim()) return;
+        menu.addItem((item) =>
+          item
+            .setTitle("Save as fragment")
+            .setIcon("text-quote")
+            .onClick(() => void saveFragment(this, node, selected).catch((e) => this.generation.report(e))),
+        );
+      }),
+    );
 
     this.statusEl = this.addStatusBarItem();
     this.store.onChange(() => {

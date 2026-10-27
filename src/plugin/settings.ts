@@ -1,5 +1,6 @@
 import { App, Notice, PluginSettingTab, SecretComponent, Setting } from "obsidian";
 import { ModelInfo, PROVIDER_LABEL, ProviderKind } from "../api/client";
+import { DEFAULT_FRAGMENT_TAGS } from "../core/fragment";
 import type BranchingStoriesPlugin from "./main";
 import { runConnectionTest } from "./diagnostics";
 import { pickModel } from "./modals";
@@ -22,12 +23,24 @@ export interface SummarySettings {
   model: string;
 }
 
+export interface FragmentSettings {
+  /** Ask a model for tags right after a fragment is saved. */
+  autoTag: boolean;
+  /** true = tag with the story's generation model. */
+  useGenerationModel: boolean;
+  provider: ProviderKind;
+  model: string;
+  /** Preferred tags, comma or line separated. */
+  tags: string;
+}
+
 export interface BSSettings {
   /** Bumped when a default changes in a way that needs migrating saved data. */
   settingsVersion: number;
   storiesRoot: string;
   generation: GenerationSettings;
   summary: SummarySettings;
+  fragments: FragmentSettings;
   /** Most recent turns sent in full; 0 = send everything (no summaries). */
   recentTurns: number;
   maxContextTokens: number;
@@ -60,6 +73,7 @@ export const DEFAULT_SETTINGS: BSSettings = {
     reasoning: false,
   },
   summary: { useGenerationModel: true, provider: "openrouter", model: "" },
+  fragments: { autoTag: true, useGenerationModel: true, provider: "openrouter", model: "", tags: DEFAULT_FRAGMENT_TAGS },
   recentTurns: 2,
   maxContextTokens: 32000,
   includeFrontmatter: true,
@@ -85,6 +99,7 @@ export function mergeSettings(saved: Partial<BSSettings> | null | undefined): BS
     ...s,
     generation: { ...DEFAULT_SETTINGS.generation, ...(s.generation ?? {}) },
     summary: { ...DEFAULT_SETTINGS.summary, ...(s.summary ?? {}) },
+    fragments: { ...DEFAULT_SETTINGS.fragments, ...(s.fragments ?? {}) },
     providers: {
       lmstudio: { ...DEFAULT_SETTINGS.providers.lmstudio, ...(s.providers?.lmstudio ?? {}) },
       openrouter: { ...DEFAULT_SETTINGS.providers.openrouter, ...(s.providers?.openrouter ?? {}) },
@@ -371,6 +386,85 @@ export class BSSettingTab extends PluginSettingTab {
           }),
         );
     }
+
+    // ---- fragments -------------------------------------------------------------
+    const f = s.fragments;
+    new Setting(containerEl).setName("Fragments").setHeading();
+
+    new Setting(containerEl)
+      .setName("Tag new fragments automatically")
+      .setDesc("After a passage is saved, a model reads it with the paragraph around it and adds tags. If that fails, the fragment is kept without tags.")
+      .addToggle((t) =>
+        t.setValue(f.autoTag).onChange(async (v) => {
+          f.autoTag = v;
+          await this.plugin.saveSettings();
+          this.display();
+        }),
+      );
+
+    if (f.autoTag) {
+      new Setting(containerEl)
+        .setName("Tag with the generation model")
+        .setDesc(
+          "Turn off to use a separate, cheaper model. Pick a small, fast model that does not think at length " +
+            "(a \"flash-lite\" or \"mini\" kind). A summarizer-only model cannot choose tags.",
+        )
+        .addToggle((t) =>
+          t.setValue(f.useGenerationModel).onChange(async (v) => {
+            f.useGenerationModel = v;
+            await this.plugin.saveSettings();
+            this.display();
+          }),
+        );
+
+      if (!f.useGenerationModel) {
+        new Setting(containerEl)
+          .setName("Tagging provider")
+          .addDropdown((d) =>
+            d
+              .addOption("openrouter", PROVIDER_LABEL.openrouter)
+              .addOption("lmstudio", PROVIDER_LABEL.lmstudio)
+              .setValue(f.provider)
+              .onChange(async (v) => {
+                f.provider = v as ProviderKind;
+                await this.plugin.saveSettings();
+                this.display();
+              }),
+          );
+        new Setting(containerEl)
+          .setName("Tagging model")
+          .addText((t) =>
+            t
+              .setPlaceholder("model slug")
+              .setValue(f.model)
+              .onChange(async (v) => {
+                f.model = v.trim();
+                await this.plugin.saveSettings();
+              }),
+          )
+          .addButton((b) =>
+            b.setButtonText("Choose…").onClick(async () => {
+              const picked = await pickModel(this.app, this.plugin, f.provider);
+              if (picked) {
+                f.model = picked;
+                await this.plugin.saveSettings();
+                this.display();
+              }
+            }),
+          );
+      }
+    }
+
+    new Setting(containerEl)
+      .setName("Preferred tags")
+      .setDesc("Comma separated. The model picks from these and may add at most one new tag. A short fixed list keeps the fragments table easy to filter.")
+      .addTextArea((t) => {
+        t.inputEl.rows = 3;
+        t.setValue(f.tags).onChange(async (v) => {
+          f.tags = v;
+          await this.plugin.saveSettings();
+        });
+      });
 
     // ---- stories ------------------------------------------------------------
     new Setting(containerEl).setName("Stories").setHeading();

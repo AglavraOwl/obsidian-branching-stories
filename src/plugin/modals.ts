@@ -391,9 +391,14 @@ export class ChoiceModal<T> extends FuzzySuggestModal<T> {
   }
 
   renderSuggestion(match: FuzzyMatch<T>, el: HTMLElement): void {
-    super.renderSuggestion(match, el);
     const star = this.star;
-    if (!star) return;
+    if (!star) {
+      super.renderSuggestion(match, el);
+      return;
+    }
+    // The highlighted match is several spans and text pieces: keep them together in one box,
+    // otherwise the row's flex layout spreads every piece apart.
+    super.renderSuggestion(match, el.createDiv({ cls: "bs-star-label" }));
     el.addClass("bs-star-row");
     const btn = el.createSpan({ cls: "bs-star-btn", attr: { "aria-label": "Star this model" } });
     const paint = (): void => {

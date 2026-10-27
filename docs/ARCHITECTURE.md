@@ -21,6 +21,7 @@ src/core/      pure logic, no Obsidian imports, unit-tested
   hash.ts       cyrb53 hash used for summary bookkeeping
   status.ts     displayStatus(): shows a long-stale "generating" node as "interrupted" (display only)
   reuse.ts      candidate prompts to reuse (continuations of other versions, other versions)
+  fragment.ts   fragment note format, file name, locating a passage in a node, tag prompt/reply parsing, .base file text
   modelChoice.ts  per-generation model/thinking override (applyOverride), models listed by the prompt window chip, favorite toggle
   tokens.ts     chars/4 token estimate
 src/api/client.ts   OpenAI-compatible client: streaming via fetch with fallback to requestUrl, SSE parser, model list, error messages, reasoning/usage parsing
@@ -35,6 +36,7 @@ src/plugin/    everything that touches Obsidian
   menu.ts       "Story menu": every applicable action in one list (for mobile)
   modals.ts     prompt window (drafts, reuse buttons), name/confirm/choice/progress/text modals
   navbar.ts     navigation bar: CodeMirror block widget (editor) + post-processor (reading view)
+  fragments.ts  selection tracker, save fragment (write note, then tag), open the Bases tables
   headerActions.ts  header buttons (phone gets a short set)
   sidebar.ts    sidebar view: path, continuations, bookmarks
   diagnostics.ts    "Test connection" report
@@ -50,7 +52,11 @@ Stories/<Story name>/
   _story.md        root note
   nodes/<id> <title>.md
   Compiled/        output of "Compile path to note"
+  Fragments/       saved passages, one note each, plus Fragments.base (table of this folder)
+<stories folder>/All fragments.base   table of every note with type: fragment
 ```
+
+**Fragment note**: properties `type: fragment`, `story`, `source` (wikilink to the node, so the node's backlinks list its fragments), `section` (`prompt` or `output`, left out when the passage was not found in the node's text, e.g. selected in Reading view), `created`, `tags`; body is the passage as plain text. Fragments have no `id`/`parent`, so the story index ignores them. The node itself is never modified. Tags are written after the note exists (a model call that can fail), and only if `tags` is still empty.
 
 **Node id**: `YYMMDD-HHMM-xx` (local time, two random base-36 chars), permanent, equal to the file-name prefix; the title part may be renamed freely. `parent` is a quoted wikilink; the id is read from its text, so renames never break the tree.
 
@@ -87,6 +93,7 @@ Not built yet from the spec: second summary tier, Canvas view. "Regenerate with 
 
 - **Navigation bar**: in the editor it is a CodeMirror 6 block widget placed right after the frontmatter (a `StateField`, refreshed by a `StateEffect` when the index changes); in reading view a markdown post-processor puts it into the first rendered section (the properties block is a section too, starting at line 0, so compare `lineStart` with the first content line). Layout styles are also set inline with `!important`.
 - **Model and thinking per generation**: `GenerateParams.override` ({provider, model, reasoning}) is applied on top of the story's effective config by `applyOverride` in `GenerationController.run()` and `prepare()`. Summaries still use the story's config (`data.config`), so a one-off expensive model does not write them. `PromptModal` takes `opts.generation` (starting values) and exposes `override` after it closes; `commands.ts` passes it on. Plain Regenerate passes the provider and model from the replaced node's frontmatter as the override. Favorites (`settings.favorites[provider]`) are the "starred" models; the picker's star button (`ChoiceModal`'s optional `star` argument) toggles them and saves settings.
+- **Selections**: `SelectionTracker` (`fragments.ts`) listens to `selectionchange` and keeps the last non-empty selection of the active note for 2 minutes. In the editor the selection is the Markdown source (`editor.getSelection()`), in Reading view the rendered text (DOM selection inside the view). Opening the Story menu or tapping a header button can clear the live selection on a phone, hence the memory. The editor-menu entry uses the editor's own selection. Tagging uses a non-streaming call like summaries; its model is the generation model or `settings.fragments` model.
 - **Header buttons**: `view.addAction` per MarkdownView, set up again when the view's file changes kind (node, story root, other). Obsidian keeps these buttons after a plugin reload, so `HeaderActions.destroy()` runs on unload.
 - **Streaming**: `fetch` streaming where allowed; on a TypeError (CORS, mixed content on mobile) the request is repeated through `requestUrl` without streaming. The setting `streaming: off` forces the plain path; Stop then answers at once and ignores the late reply. Summaries never stream.
 - **Index**: built from the metadata cache on layout ready and once on the first `resolved` event, then updated per file (`changed`, `deleted`, `rename`); listeners are only told when something really changed.

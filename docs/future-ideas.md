@@ -18,7 +18,9 @@ Open design points (decide when this is picked up):
 - Whether the chosen values are stored in the node's frontmatter, so a regeneration or a later reading shows what was used.
 - Whether the toggles are remembered per story or reset for each prompt.
 
-## Save a fragment
+## Save a fragment (built as 0.4.0, see STATUS.md; the notes below are the original plan)
+
+Built differently from the plan in two points (2026-10-27): there is also a combined table of all stories' fragments, and tagging has its own model setting with a preferred-tag list.
 
 Select a passage in a node's text and save it, together with a link back to the source node.
 

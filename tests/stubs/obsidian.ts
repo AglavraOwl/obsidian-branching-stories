@@ -35,7 +35,26 @@ export class FuzzySuggestModal<T> extends Modal {
   getItems(): T[] {
     return [];
   }
+  /** Like Obsidian: the matched text is drawn as several pieces, the matching ones in highlight spans. */
+  renderSuggestion(match: { item: T }, el: HTMLElement): void {
+    const text = this.getItemText(match.item);
+    for (const [i, piece] of text.split(/(flash|lite)/).entries()) {
+      if (!piece) continue;
+      if (i % 2) {
+        const span = document.createElement("span");
+        span.className = "suggestion-highlight";
+        span.textContent = piece;
+        el.appendChild(span);
+      } else {
+        el.appendChild(document.createTextNode(piece));
+      }
+    }
+  }
+  getItemText(_item: T): string {
+    return "";
+  }
 }
+export class Menu {}
 export class Setting {
   constructor(public el: HTMLElement) {}
 }

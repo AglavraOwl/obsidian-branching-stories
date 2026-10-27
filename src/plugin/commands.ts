@@ -17,6 +17,7 @@ import {
   toggleStar,
 } from "./actions";
 import { runConnectionTest } from "./diagnostics";
+import { openFragmentsTable, saveSelectionAsFragment } from "./fragments";
 import type BranchingStoriesPlugin from "./main";
 import { showStoryMenu } from "./menu";
 import { continuationSources, versionSources } from "../core/reuse";
@@ -223,6 +224,15 @@ export function registerCommands(plugin: BranchingStoriesPlugin): void {
   add("open-neighbour-tab", "Open another node in a new tab…", () => true, (w) =>
     openNeighbourInNewTab(plugin, w.node ?? null, w.storyFolder),
   );
+  // ---- fragments ---------------------------------------------------------------------
+  add("save-fragment", "Save selection as fragment", (w) => !!w.node, (w) => saveSelectionAsFragment(plugin, w));
+  add("open-fragments-table", "Open fragments table of this story", () => true, (w) => openFragmentsTable(plugin, w.storyFolder));
+  plugin.addCommand({
+    id: "open-all-fragments",
+    name: "Open table of all fragments",
+    callback: () => void openFragmentsTable(plugin, null).catch((e) => plugin.generation.report(e)),
+  });
+
   add("toggle-star", "Toggle star on this node", (w) => !!w.node, (w) => toggleStar(plugin, w.node!));
   add("set-label", "Set branch label…", (w) => !!w.node, (w) => setLabel(plugin, w.node!));
 

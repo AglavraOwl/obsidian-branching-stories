@@ -366,7 +366,7 @@ export class GenerationController {
     }
     write();
     await writing;
-    store.addMeta({ ...meta, status: finalStatus });
+    store.addMeta({ ...meta, status: finalStatus, cost: usage?.cost });
     plugin.refreshStatusBar();
     if (finalStatus === "done") {
       const reasoning = usage?.reasoningTokens ? `, ${usage.reasoningTokens} of them reasoning` : "";

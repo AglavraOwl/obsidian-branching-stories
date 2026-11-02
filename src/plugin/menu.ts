@@ -14,6 +14,7 @@ import {
   toggleStar,
 } from "./actions";
 import { editAndRegenerate, newNode, regenerate, whereAmI } from "./commands";
+import { showCost } from "./cost";
 import { runConnectionTest } from "./diagnostics";
 import { openFragmentsTable, saveSelectionAsFragment, updateFragmentFormat } from "./fragments";
 import type BranchingStoriesPlugin from "./main";
@@ -80,6 +81,7 @@ export async function showStoryMenu(plugin: BranchingStoriesPlugin): Promise<voi
   const lastId = plugin.lastActiveId(w.storyFolder);
   const last = lastId ? plugin.store.index.get(w.storyFolder, lastId) : undefined;
   if (last && last.id !== node?.id) add("Go to the last active node", () => openNode(plugin, last));
+  add("What this story cost", async () => showCost(plugin, w.storyFolder, node ?? null));
   add("Fragments table of this story", () => openFragmentsTable(plugin, w.storyFolder));
   add("Table of all fragments", () => openFragmentsTable(plugin, null));
   add("Update saved fragments and tables", () => updateFragmentFormat(plugin));

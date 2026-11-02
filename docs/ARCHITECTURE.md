@@ -21,6 +21,7 @@ src/core/      pure logic, no Obsidian imports, unit-tested
   hash.ts       cyrb53 hash used for summary bookkeeping
   status.ts     displayStatus(): shows a long-stale "generating" node as "interrupted" (display only)
   reuse.ts      candidate prompts to reuse (continuations of other versions, other versions)
+  cost.ts       cost formatting, path/story sums, per-model breakdown (pure)
   fragment.ts   fragment note format, file name, locating a passage in a node, tag prompt/reply parsing, .base file text
   modelChoice.ts  per-generation model/thinking override (applyOverride), models listed by the prompt window chip, favorite toggle
   tokens.ts     chars/4 token estimate
@@ -36,6 +37,7 @@ src/plugin/    everything that touches Obsidian
   menu.ts       "Story menu": every applicable action in one list (for mobile)
   modals.ts     prompt window (drafts, reuse buttons), name/confirm/choice/progress/text modals
   navbar.ts     navigation bar: CodeMirror block widget (editor) + post-processor (reading view)
+  cost.ts       story cost from the index and fragment notes; the cost window
   fragments.ts  selection tracker, save fragment (write note, then tag), open the Bases tables
   headerActions.ts  header buttons (phone gets a short set)
   sidebar.ts    sidebar view: path, continuations, bookmarks
@@ -56,11 +58,11 @@ Stories/<Story name>/
 <stories folder>/All fragments.base   table of every note with type: fragment
 ```
 
-**Fragment note**: properties `type: fragment`, `story`, `source` (wikilink to the node, so the node's backlinks list its fragments), `section` (`prompt` or `output`, left out when the passage was not found in the node's text, e.g. selected in Reading view), `created`, `tags`, `comment` (typed by the author, may be edited in the table), `text` (the passage; a property because a Bases table cannot show a note's body); the body is empty and free for the author. Notes saved by 0.4.0 had the passage in the body; the "Update saved fragments and tables" action moves it (`textToMigrate`). Table files are written once and never overwritten except by that action. Fragments have no `id`/`parent`, so the story index ignores them. The node itself is never modified. Tags are written after the note exists (a model call that can fail), and only if `tags` is still empty.
+**Fragment note**: properties `type: fragment`, `story`, `source` (wikilink to the node, so the node's backlinks list its fragments), `section` (`prompt` or `output`, left out when the passage was not found in the node's text, e.g. selected in Reading view), `created`, `tags`, `tag_cost` (what tagging it cost), `comment` (typed by the author, may be edited in the table), `text` (the passage; a property because a Bases table cannot show a note's body); the body is empty and free for the author. Notes saved by 0.4.0 had the passage in the body; the "Update saved fragments and tables" action moves it (`textToMigrate`). Table files are written once and never overwritten except by that action. Fragments have no `id`/`parent`, so the story index ignores them. The node itself is never modified. Tags are written after the note exists (a model call that can fail), and only if `tags` is still empty.
 
 **Node id**: `YYMMDD-HHMM-xx` (local time, two random base-36 chars), permanent, equal to the file-name prefix; the title part may be renamed freely. `parent` is a quoted wikilink; the id is read from its text, so renames never break the tree.
 
-**Node frontmatter**: `id`, `parent`, `regen_of`, `created` (local `YYYY-MM-DDTHH:mm:ss`), `status` (`generating` | `done` | `failed` | `stopped`), `provider`, `model`, `settings` {temperature, max_tokens, top_p}, `usage` {input_tokens, output_tokens, reasoning_tokens, cost}, `summary_hash` (hash of the Output the summary was written from), `summary_check` (hash of the summary text as the plugin wrote it, to notice hand edits), `summary_locked`, `starred`, `label`, `error`.
+**Node frontmatter**: `id`, `parent`, `regen_of`, `created` (local `YYYY-MM-DDTHH:mm:ss`), `status` (`generating` | `done` | `failed` | `stopped`), `provider`, `model`, `settings` {temperature, max_tokens, top_p}, `usage` {input_tokens, output_tokens, reasoning_tokens, cost}, `summary_cost` (running sum of what this node's summary calls cost), `summary_hash` (hash of the Output the summary was written from), `summary_check` (hash of the summary text as the plugin wrote it, to notice hand edits), `summary_locked`, `starred`, `label`, `error`.
 
 **Node body**: `## Prompt`, `## Output`, optional reasoning callout `> [!note]- Reasoning`, `## Summary`, `## Keep in mind`. Sections are found by exact heading; generated text that imitates a heading is defanged on write.
 

@@ -7,6 +7,10 @@ import { NodeMeta, TreeIndex } from "../core/tree";
 const STATUSES: NodeStatus[] = ["generating", "done", "failed", "stopped"];
 
 /** Flatten `[["x"]]`-style arrays that YAML makes out of unquoted wikilinks. */
+function numberOf(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+}
+
 function firstString(v: unknown): string | null {
   if (typeof v === "string") return v;
   if (Array.isArray(v)) {
@@ -96,6 +100,8 @@ export class StoryStore {
       label: typeof fm.label === "string" ? fm.label : "",
       title: file.basename.slice(id.length).trim(),
       model: typeof fm.model === "string" ? fm.model : "",
+      cost: numberOf((fm.usage as Record<string, unknown> | undefined)?.cost),
+      summaryCost: numberOf(fm.summary_cost),
     };
   }
 

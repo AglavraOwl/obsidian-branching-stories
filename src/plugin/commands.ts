@@ -16,6 +16,7 @@ import {
   setLabel,
   toggleStar,
 } from "./actions";
+import { showCost } from "./cost";
 import { runConnectionTest } from "./diagnostics";
 import { openFragmentsTable, saveSelectionAsFragment, updateFragmentFormat } from "./fragments";
 import type BranchingStoriesPlugin from "./main";
@@ -224,6 +225,8 @@ export function registerCommands(plugin: BranchingStoriesPlugin): void {
   add("open-neighbour-tab", "Open another node in a new tab…", () => true, (w) =>
     openNeighbourInNewTab(plugin, w.node ?? null, w.storyFolder),
   );
+  add("show-cost", "Show what this story cost", () => true, async (w) => showCost(plugin, w.storyFolder, w.node ?? null));
+
   // ---- fragments ---------------------------------------------------------------------
   add("save-fragment", "Save selection as fragment", (w) => !!w.node, (w) => saveSelectionAsFragment(plugin, w));
   add("open-fragments-table", "Open fragments table of this story", () => true, (w) => openFragmentsTable(plugin, w.storyFolder));

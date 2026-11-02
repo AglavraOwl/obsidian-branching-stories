@@ -130,6 +130,24 @@
   margin: 0 0 8px;
 }
 
+.bs-side-cost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: -2px 0 6px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+}
+
+.bs-side-cost-icon {
+  display: inline-flex;
+}
+
+.is-mobile .bs-side-cost {
+  padding: 6px 0;
+}
+
 .bs-side-heading {
   margin: 14px 0 4px;
   font-size: var(--font-ui-smaller);

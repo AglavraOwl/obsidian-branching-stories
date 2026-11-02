@@ -1,8 +1,10 @@
 import { StateEffect, StateField, EditorState, Extension } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, WidgetType } from "@codemirror/view";
 import { editorInfoField, MarkdownPostProcessorContext, MarkdownView, setIcon } from "obsidian";
+import { fmtCost, nodeCost, pathCost } from "../core/cost";
 import { NodeMeta } from "../core/tree";
 import { goDown, goStep, goUp, nodeInfo, pickRegen, pickVersion, toggleStar } from "./actions";
+import { showCost } from "./cost";
 import type BranchingStoriesPlugin from "./main";
 
 const GROUP_STYLE = { display: "inline-flex", "flex-direction": "row", "flex-wrap": "nowrap", "align-items": "center" };
@@ -63,6 +65,12 @@ export function buildNavBar(plugin: BranchingStoriesPlugin, meta: NodeMeta): HTM
   const star = button(bar, "star", "", meta.starred ? "Remove star" : "Star this node", true, () => toggleStar(plugin, meta));
   if (meta.starred) star.addClass("bs-starred");
 
+  // What this node cost and what the path to it cost; a tap opens the full breakdown.
+  if (meta.cost !== undefined) {
+    const path = pathCost(plugin.store.index.pathTo(meta));
+    button(bar, "coins", `${fmtCost(nodeCost(meta))} · path ${fmtCost(path)}`, "What this node and its path cost. Tap for details.", true, async () => showCost(plugin, meta.story, meta), fmtCost(nodeCost(meta))).addClass("bs-cost-chip");
+  }
+
   if (meta.label) bar.createSpan({ text: meta.label, cls: "bs-nav-chip" });
   const status = plugin.statusOf(meta);
   if (status !== "done") bar.createSpan({ text: status, cls: `bs-nav-chip bs-status-${status}` });
@@ -71,7 +79,8 @@ export function buildNavBar(plugin: BranchingStoriesPlugin, meta: NodeMeta): HTM
 
 function signature(plugin: BranchingStoriesPlugin, meta: NodeMeta): string {
   const info = nodeInfo(plugin, meta);
-  return JSON.stringify([info.version, info.regen, info.children, meta.starred, meta.label, plugin.statusOf(meta)]);
+  const cost = meta.cost === undefined ? null : [nodeCost(meta), pathCost(plugin.store.index.pathTo(meta))];
+  return JSON.stringify([info.version, info.regen, info.children, meta.starred, meta.label, plugin.statusOf(meta), cost]);
 }
 
 /** Position right after the frontmatter block (or 0 when there is none). */

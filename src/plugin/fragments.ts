@@ -120,15 +120,16 @@ export async function saveFragment(plugin: BranchingStoriesPlugin, node: NodeMet
     window.setTimeout(() => notice.hide(), 5000);
   };
   try {
-    const tags = await tagPassage(plugin, node, passage, where.context);
-    if (!tags.length) {
-      finish(`Fragment saved: “${snippet(passage, 50)}”\nThe model gave no tags; add them by hand.`);
-      return file;
-    }
+    const { tags, cost } = await tagPassage(plugin, node, passage, where.context);
     await app.fileManager.processFrontMatter(file, (fm) => {
-      if (!Array.isArray(fm.tags) || fm.tags.length === 0) fm.tags = tags; // never replace tags typed meanwhile
+      if (cost > 0) fm.tag_cost = cost;
+      if (tags.length && (!Array.isArray(fm.tags) || fm.tags.length === 0)) fm.tags = tags; // never replace tags typed meanwhile
     });
-    finish(`Fragment saved: “${snippet(passage, 50)}”\nTags: ${tags.join(", ")}`);
+    finish(
+      tags.length
+        ? `Fragment saved: “${snippet(passage, 50)}”\nTags: ${tags.join(", ")}`
+        : `Fragment saved: “${snippet(passage, 50)}”\nThe model gave no tags; add them by hand.`,
+    );
   } catch (e) {
     console.error("[Branching Stories] tagging failed", e);
     finish(`Fragment saved without tags: ${e instanceof Error ? e.message : String(e)}`);
@@ -136,7 +137,12 @@ export async function saveFragment(plugin: BranchingStoriesPlugin, node: NodeMet
   return file;
 }
 
-async function tagPassage(plugin: BranchingStoriesPlugin, node: NodeMeta, passage: string, context: string): Promise<string[]> {
+async function tagPassage(
+  plugin: BranchingStoriesPlugin,
+  node: NodeMeta,
+  passage: string,
+  context: string,
+): Promise<{ tags: string[]; cost: number }> {
   const s = plugin.settings.fragments;
   let target = { provider: s.provider, model: s.model };
   if (s.useGenerationModel) {
@@ -160,7 +166,7 @@ async function tagPassage(plugin: BranchingStoriesPlugin, node: NodeMeta, passag
     {},
     plugin.clientDeps,
   );
-  return parseTagReply(result.text, vocabulary);
+  return { tags: parseTagReply(result.text, vocabulary), cost: result.usage?.cost ?? 0 };
 }
 
 /** Creates the file with this text unless something is there already (a table the author changed stays as it is). */

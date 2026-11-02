@@ -1,6 +1,8 @@
 import { ItemView, Platform, WorkspaceLeaf, setIcon } from "obsidian";
+import { fmtCost } from "../core/cost";
 import { NodeMeta } from "../core/tree";
 import { nodeInfo, openNode } from "./actions";
+import { costOfStory, showCost } from "./cost";
 import type BranchingStoriesPlugin from "./main";
 
 export const SIDEBAR_VIEW_TYPE = "branching-stories-sidebar";
@@ -89,6 +91,22 @@ export class StorySidebar extends ItemView {
     const idx = this.plugin.store.index;
     const storyName = this.storyFolder.split("/").pop() || "Story";
     el.createEl("h4", { text: storyName, cls: "bs-side-title" });
+
+    // What the story has cost so far (generation, summaries, tagging); a tap opens the breakdown.
+    try {
+      const spent = costOfStory(this.plugin, this.storyFolder);
+      if (spent.total > 0) {
+        const line = el.createDiv({ cls: "bs-side-cost", attr: { title: "Show what was spent and on which model" } });
+        setIcon(line.createSpan({ cls: "bs-side-cost-icon" }), "coins");
+        line.createSpan({ text: `${fmtCost(spent.total)} spent` });
+        const folder = this.storyFolder;
+        line.addEventListener("click", () => {
+          if (!this.plugin.inTransition()) showCost(this.plugin, folder, this.current);
+        });
+      }
+    } catch (e) {
+      console.error("[Branching Stories] cost line failed", e); // the cost is a bonus: never take the panel down with it
+    }
 
     // ---- path ---------------------------------------------------------------------
     el.createEl("div", { text: "Path", cls: "bs-side-heading" });

@@ -1,5 +1,6 @@
 import { Notice, TFile } from "obsidian";
 import { chatCompletion, ProviderError, ProviderKind } from "../api/client";
+import { roundCost } from "../core/cost";
 import { hashOf } from "../core/hash";
 import { parseNodeText, replaceSection } from "../core/nodeDoc";
 import { cleanSummary, evaluateSummary, SummaryState, summaryMessages } from "../core/summary";
@@ -148,12 +149,24 @@ export class SummaryService {
       {},
       this.plugin.clientDeps,
     );
+    const cost = result.usage?.cost ?? 0;
     const summary = cleanSummary(result.text);
-    if (!summary) throw new Error("the model returned an empty summary");
-    await this.write(file, output, summary);
+    if (!summary) {
+      await this.addCost(file, cost); // the call was paid for even though nothing usable came back
+      throw new Error("the model returned an empty summary");
+    }
+    await this.write(file, output, summary, cost);
   }
 
-  private async write(file: TFile, output: string, summary: string): Promise<void> {
+  /** Adds what a summary call cost to the node's running `summary_cost`. */
+  private async addCost(file: TFile, cost: number): Promise<void> {
+    if (!(cost > 0)) return;
+    await this.app.fileManager.processFrontMatter(file, (fm) => {
+      fm.summary_cost = roundCost((typeof fm.summary_cost === "number" ? fm.summary_cost : 0) + cost);
+    });
+  }
+
+  private async write(file: TFile, output: string, summary: string, cost: number): Promise<void> {
     const outputHash = hashOf(output);
     let written: string | null = null;
     await this.app.vault.process(file, (text) => {
@@ -163,12 +176,16 @@ export class SummaryService {
       written = parseNodeText(updated).sections.summary;
       return updated;
     });
-    if (written === null) return; // leave it empty; it will be redone next time
+    if (written === null) {
+      await this.addCost(file, cost);
+      return; // leave it empty; it will be redone next time
+    }
     const check = hashOf(written);
     await this.app.fileManager.processFrontMatter(file, (fm) => {
       fm.summary_hash = outputHash;
       fm.summary_check = check;
       delete fm.summary_locked;
+      if (cost > 0) fm.summary_cost = roundCost((typeof fm.summary_cost === "number" ? fm.summary_cost : 0) + cost);
     });
   }
 

@@ -17,6 +17,10 @@ export interface NodeMeta {
   title: string;
   /** Model that produced the output (empty if unknown). */
   model: string;
+  /** What the provider charged for generating this node; undefined when it did not say. */
+  cost?: number;
+  /** What was spent on this node's summaries so far. */
+  summaryCost?: number;
 }
 
 export interface Position {
@@ -118,6 +122,13 @@ export class TreeIndex {
     const set = this.children.get(this.key(node.story, node.id));
     if (!set) return [];
     return [...set].map((k) => this.nodes.get(k)!).sort(byCreated);
+  }
+
+  /** Every node of a story. */
+  inStory(story: string): NodeMeta[] {
+    const out: NodeMeta[] = [];
+    for (const n of this.nodes.values()) if (n.story === story) out.push(n);
+    return out;
   }
 
   /** Starred nodes of a story. */

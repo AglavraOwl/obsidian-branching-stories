@@ -99,6 +99,34 @@ describe("story sidebar", () => {
     expect(text).toContain("4 nodes in this story");
   });
 
+  it("shows what the story has cost, including summaries and fragment tagging", async () => {
+    const { StorySidebar } = await import("../src/plugin/sidebar");
+    const index = new TreeIndex();
+    index.upsert(meta("n1", null, "01", { cost: 0.02, summaryCost: 0.005 }));
+    index.upsert(meta("n2", "n1", "02", { cost: 0.03 }));
+    const file = { path: "Stories/S/nodes/n2.md" };
+    const fragment = { path: "Stories/S/Fragments/a fragment.md" };
+    const plugin = {
+      app: {
+        vault: { getMarkdownFiles: () => [file, fragment] },
+        metadataCache: { getFileCache: (f: { path: string }) => (f === fragment ? { frontmatter: { tag_cost: 0.001 } } : null) },
+      },
+      settings: { bookmarkSort: "created" },
+      statusOf: (m: NodeMeta) => m.status,
+      generation: { report: () => undefined },
+      store: { index, onChange: () => () => undefined, nodeOf: () => index.get("Stories/S", "n2"), isStoryRoot: () => false },
+    };
+    const view = new StorySidebar({} as never, plugin as never) as unknown as {
+      app: { workspace: { getActiveFile: () => unknown }; vault: { getMarkdownFiles: () => unknown[] } };
+      contentEl: HTMLElement;
+      onOpen: () => Promise<void>;
+    };
+    view.app.workspace.getActiveFile = () => file;
+    view.app.vault.getMarkdownFiles = () => [];
+    await view.onOpen();
+    expect(view.contentEl.querySelector(".bs-side-cost")?.textContent).toContain("$0.056 spent");
+  });
+
   it("explains itself instead of staying blank when drawing fails", async () => {
     const { StorySidebar } = await import("../src/plugin/sidebar");
     const index = new TreeIndex();

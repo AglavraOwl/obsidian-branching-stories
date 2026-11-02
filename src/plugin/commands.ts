@@ -17,7 +17,7 @@ import {
   toggleStar,
 } from "./actions";
 import { runConnectionTest } from "./diagnostics";
-import { openFragmentsTable, saveSelectionAsFragment } from "./fragments";
+import { openFragmentsTable, saveSelectionAsFragment, updateFragmentFormat } from "./fragments";
 import type BranchingStoriesPlugin from "./main";
 import { showStoryMenu } from "./menu";
 import { continuationSources, versionSources } from "../core/reuse";
@@ -231,6 +231,11 @@ export function registerCommands(plugin: BranchingStoriesPlugin): void {
     id: "open-all-fragments",
     name: "Open table of all fragments",
     callback: () => void openFragmentsTable(plugin, null).catch((e) => plugin.generation.report(e)),
+  });
+  plugin.addCommand({
+    id: "update-fragments",
+    name: "Update saved fragments and tables to the current format",
+    callback: () => void updateFragmentFormat(plugin).catch((e) => plugin.generation.report(e)),
   });
 
   add("toggle-star", "Toggle star on this node", (w) => !!w.node, (w) => toggleStar(plugin, w.node!));

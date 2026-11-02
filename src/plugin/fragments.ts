@@ -3,6 +3,7 @@ import { chatCompletion } from "../api/client";
 import {
   ALL_FRAGMENTS_BASE_FILE,
   allBaseText,
+  FRAGMENT_TYPE,
   FRAGMENTS_BASE_FILE,
   FRAGMENTS_FOLDER,
   fragmentFileName,
@@ -12,11 +13,14 @@ import {
   serializeFragment,
   storyBaseText,
   tagMessages,
+  textToMigrate,
 } from "../core/fragment";
 import { makeWikilink } from "../core/ids";
+import { splitFrontmatter } from "../core/nodeDoc";
 import { NodeMeta } from "../core/tree";
 import type { Where } from "./commands";
 import type BranchingStoriesPlugin from "./main";
+import { ConfirmModal } from "./modals";
 
 /** A remembered selection stays usable this long: opening a menu can clear the real one. */
 const REMEMBER_MS = 2 * 60 * 1000;
@@ -164,6 +168,55 @@ async function ensureFile(plugin: BranchingStoriesPlugin, path: string, text: st
   const existing = plugin.app.vault.getAbstractFileByPath(path);
   if (existing instanceof TFile) return existing;
   return plugin.app.vault.create(path, text);
+}
+
+/**
+ * Brings fragments saved by 0.4.0 to the current format (the passage moves from the note body into the
+ * `text` property, a `comment` property is added) and writes the current table layout over every
+ * fragments table. Asks first, because the tables go back to the standard layout.
+ */
+export async function updateFragmentFormat(plugin: BranchingStoriesPlugin): Promise<void> {
+  const { app } = plugin;
+  const ok = await new ConfirmModal(app, {
+    title: "Update fragments and tables",
+    body:
+      "Fragments saved before this version keep their passage in the note's body. This copies it into the " +
+      "`text` property (so tables can show it), clears the body and adds an empty `comment` property.\n\n" +
+      "Every fragments table (one per story, and \"All fragments\") is rewritten with the current columns: " +
+      "text, tags, comment, story, source. Changes you made to a table's layout are reset.",
+    confirmLabel: "Update",
+  }).open();
+  if (!ok) return;
+
+  let notes = 0;
+  for (const file of app.vault.getMarkdownFiles()) {
+    const fm = (app.metadataCache.getFileCache(file)?.frontmatter ?? {}) as Record<string, unknown>;
+    if (fm.type !== FRAGMENT_TYPE) continue;
+    const text = textToMigrate(fm, splitFrontmatter(await app.vault.read(file)).body);
+    if (text === null) continue;
+    await app.fileManager.processFrontMatter(file, (f) => {
+      f.text = text;
+      if (!("comment" in f)) f.comment = "";
+    });
+    await app.vault.process(file, (t) => {
+      const parts = splitFrontmatter(t);
+      return parts.frontmatter === null ? t : `---\n${parts.frontmatter}\n---\n`;
+    });
+    notes++;
+  }
+
+  let tables = 0;
+  for (const file of app.vault.getFiles()) {
+    if (file.extension !== "base") continue;
+    if (file.name === FRAGMENTS_BASE_FILE && file.parent?.name === FRAGMENTS_FOLDER) {
+      await app.vault.modify(file, storyBaseText(file.parent.path));
+      tables++;
+    } else if (file.name === ALL_FRAGMENTS_BASE_FILE) {
+      await app.vault.modify(file, allBaseText());
+      tables++;
+    }
+  }
+  new Notice(`Updated ${notes} fragment${notes === 1 ? "" : "s"} and ${tables} table${tables === 1 ? "" : "s"}.`);
 }
 
 /** Opens the Bases table of one story's fragments, or of all fragments when no story is given. */

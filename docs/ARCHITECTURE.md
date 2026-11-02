@@ -56,7 +56,7 @@ Stories/<Story name>/
 <stories folder>/All fragments.base   table of every note with type: fragment
 ```
 
-**Fragment note**: properties `type: fragment`, `story`, `source` (wikilink to the node, so the node's backlinks list its fragments), `section` (`prompt` or `output`, left out when the passage was not found in the node's text, e.g. selected in Reading view), `created`, `tags`; body is the passage as plain text. Fragments have no `id`/`parent`, so the story index ignores them. The node itself is never modified. Tags are written after the note exists (a model call that can fail), and only if `tags` is still empty.
+**Fragment note**: properties `type: fragment`, `story`, `source` (wikilink to the node, so the node's backlinks list its fragments), `section` (`prompt` or `output`, left out when the passage was not found in the node's text, e.g. selected in Reading view), `created`, `tags`, `comment` (typed by the author, may be edited in the table), `text` (the passage; a property because a Bases table cannot show a note's body); the body is empty and free for the author. Notes saved by 0.4.0 had the passage in the body; the "Update saved fragments and tables" action moves it (`textToMigrate`). Table files are written once and never overwritten except by that action. Fragments have no `id`/`parent`, so the story index ignores them. The node itself is never modified. Tags are written after the note exists (a model call that can fail), and only if `tags` is still empty.
 
 **Node id**: `YYMMDD-HHMM-xx` (local time, two random base-36 chars), permanent, equal to the file-name prefix; the title part may be renamed freely. `parent` is a quoted wikilink; the id is read from its text, so renames never break the tree.
 

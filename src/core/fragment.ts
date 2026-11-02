@@ -33,7 +33,10 @@ export function fragmentFileName(created: Date, text: string): string {
   return `${stamp} ${makeTitle(text, 6)}.md`;
 }
 
-/** The fragment note: properties, then the passage as plain text so it can be copied as it is. */
+/**
+ * The fragment note. The passage is the `text` property, because a Bases table can show properties
+ * but not the body of a note; the body is left free for the author. `comment` is for the author too.
+ */
 export function serializeFragment(info: FragmentInfo, text: string): string {
   const fm = emitYaml({
     type: FRAGMENT_TYPE,
@@ -42,8 +45,10 @@ export function serializeFragment(info: FragmentInfo, text: string): string {
     section: info.section,
     created: makeTimestamp(info.created),
     tags: info.tags,
+    comment: "",
+    text: text.trim(),
   });
-  return `---\n${fm}\n---\n${text.trim()}\n`;
+  return `---\n${fm}\n---\n`;
 }
 
 const collapse = (s: string): string => s.replace(/\s+/g, " ").trim();
@@ -135,26 +140,57 @@ export function parseTagReply(reply: string, vocabulary: string[]): string[] {
 
 const yamlSingle = (s: string): string => `'${s.replace(/'/g, "''")}'`;
 
-const BASE_VIEW = `views:
+/**
+ * Columns: the passage, tags, the author's comment, story, source. Newest first. The text column is wide
+ * and rows are tall so a couple of sentences show in full; both can be changed in the table's own menu.
+ */
+const BASE_VIEW = `properties:
+  note.text:
+    displayName: Text
+  note.tags:
+    displayName: Tags
+  note.comment:
+    displayName: Comment
+  note.story:
+    displayName: Story
+  note.source:
+    displayName: Source
+views:
   - type: table
     name: Fragments
+    rowHeight: tall
     order:
-      - file.name
-      - tags
-      - story
-      - source
-      - created
+      - note.text
+      - note.tags
+      - note.comment
+      - note.story
+      - note.source
     sort:
-      - property: created
+      - property: note.created
         direction: DESC
+    columnSize:
+      note.text: 420
+      note.tags: 200
+      note.comment: 260
+      note.story: 120
+      note.source: 200
 `;
 
 /** A Bases table of the fragments inside one folder (a story's `Fragments` folder). */
 export function storyBaseText(folder: string): string {
-  return `filters:\n  and:\n    - ${yamlSingle(`file.inFolder("${folder.replace(/"/g, "")}")`)}\n${BASE_VIEW}`;
+  const inFolder = yamlSingle(`file.inFolder("${folder.replace(/"/g, "")}")`);
+  // The type filter keeps the table file itself (and any other note) out of the list.
+  return `filters:\n  and:\n    - ${inFolder}\n    - ${yamlSingle(`type == "${FRAGMENT_TYPE}"`)}\n${BASE_VIEW}`;
 }
 
 /** A Bases table of every fragment in the vault, whichever story it belongs to. */
 export function allBaseText(): string {
   return `filters:\n  and:\n    - ${yamlSingle(`type == "${FRAGMENT_TYPE}"`)}\n${BASE_VIEW}`;
+}
+
+/** Fragments saved by 0.4.0 keep the passage in the body: the text to move into the `text` property. */
+export function textToMigrate(frontmatter: Record<string, unknown>, body: string): string | null {
+  if (frontmatter.type !== FRAGMENT_TYPE) return null;
+  if (typeof frontmatter.text === "string" && frontmatter.text.trim()) return null;
+  return body.trim() || null;
 }

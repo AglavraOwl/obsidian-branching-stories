@@ -9,10 +9,18 @@ import {
   serializeFragment,
   storyBaseText,
   tagMessages,
+  textToMigrate,
 } from "../src/core/fragment";
 import { splitFrontmatter } from "../src/core/nodeDoc";
 
 const when = new Date(2026, 9, 27, 14, 5, 9);
+
+/** The value of the `text` property. The emitter writes strings that need it as JSON, which is valid YAML. */
+const textProperty = (frontmatter: string): unknown => {
+  const line = frontmatter.split("\n").find((l) => l.startsWith("text: "))!;
+  const raw = line.slice("text: ".length);
+  return raw.startsWith('"') ? JSON.parse(raw) : raw;
+};
 
 describe("fragment file", () => {
   it("is named by date, time and the first words", () => {
@@ -21,7 +29,7 @@ describe("fragment file", () => {
     );
   });
 
-  it("keeps the passage plain and the properties readable", () => {
+  it("keeps the passage in the text property (tables show properties) and leaves the body free", () => {
     const text = serializeFragment(
       { story: "Road Story", source: "[[261027-1405-ab Wagon]]", section: "output", created: when, tags: ["sensory", "description"] },
       "  The cart lurched.\n\nHe gagged.  ",
@@ -31,7 +39,15 @@ describe("fragment file", () => {
     expect(frontmatter).toContain('source: "[[261027-1405-ab Wagon]]"');
     expect(frontmatter).toContain("created: 2026-10-27T14:05:09");
     expect(frontmatter).toContain("  - sensory");
-    expect(body.trim()).toBe("The cart lurched.\n\nHe gagged.");
+    expect(frontmatter).toContain('comment: ""');
+    expect(textProperty(frontmatter!)).toBe("The cart lurched.\n\nHe gagged.");
+    expect(body.trim()).toBe("");
+  });
+
+  it("survives quotes, colons and a leading dash in the passage", () => {
+    const passage = '"No," she said: - not now. #tag [[link]]';
+    const { frontmatter } = splitFrontmatter(serializeFragment({ story: "S", source: "[[n]]", created: when, tags: [] }, passage));
+    expect(textProperty(frontmatter!)).toBe(passage);
   });
 
   it("writes an empty tag list and leaves out an unknown section", () => {
@@ -107,13 +123,39 @@ describe("tags", () => {
 });
 
 describe("base files", () => {
-  it("filters a story table by its folder", () => {
+  it("filters a story table by its folder and keeps the table file itself out", () => {
     const t = storyBaseText("Stories/Road's End/Fragments");
     expect(t).toContain(`- 'file.inFolder("Stories/Road''s End/Fragments")'`);
+    expect(t).toContain(`- 'type == "fragment"'`);
     expect(t).toContain("type: table");
   });
 
   it("filters the combined table by the fragment type", () => {
     expect(allBaseText()).toContain(`- 'type == "fragment"'`);
+  });
+
+  it("shows text, tags, comment, story, source in that order, newest first", () => {
+    for (const t of [storyBaseText("S/Fragments"), allBaseText()]) {
+      const order = t
+        .match(/order:\n((?: {6}- .+\n)+)/)![1]
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => l.replace(/^ +- /, ""));
+      expect(order).toEqual(["note.text", "note.tags", "note.comment", "note.story", "note.source"]);
+      expect(t).toContain("property: note.created\n        direction: DESC");
+      expect(t).toContain("rowHeight: tall");
+    }
+  });
+});
+
+describe("textToMigrate", () => {
+  it("takes the body of a fragment that has no text property", () => {
+    expect(textToMigrate({ type: "fragment" }, "\nThe cart lurched.\n")).toBe("The cart lurched.");
+  });
+
+  it("leaves new-format fragments, empty ones and other notes alone", () => {
+    expect(textToMigrate({ type: "fragment", text: "x" }, "body")).toBeNull();
+    expect(textToMigrate({ type: "fragment" }, "  \n")).toBeNull();
+    expect(textToMigrate({ type: "other" }, "body")).toBeNull();
   });
 });

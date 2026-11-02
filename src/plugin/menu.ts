@@ -15,7 +15,7 @@ import {
 } from "./actions";
 import { editAndRegenerate, newNode, regenerate, whereAmI } from "./commands";
 import { runConnectionTest } from "./diagnostics";
-import { openFragmentsTable, saveSelectionAsFragment } from "./fragments";
+import { openFragmentsTable, saveSelectionAsFragment, updateFragmentFormat } from "./fragments";
 import type BranchingStoriesPlugin from "./main";
 import { ChoiceModal } from "./modals";
 import { SummaryCancelled } from "./summaries";
@@ -82,6 +82,7 @@ export async function showStoryMenu(plugin: BranchingStoriesPlugin): Promise<voi
   if (last && last.id !== node?.id) add("Go to the last active node", () => openNode(plugin, last));
   add("Fragments table of this story", () => openFragmentsTable(plugin, w.storyFolder));
   add("Table of all fragments", () => openFragmentsTable(plugin, null));
+  add("Update saved fragments and tables", () => updateFragmentFormat(plugin));
   add("Open story sidebar", () => plugin.activateSidebar());
   add("Test connection", () => runConnectionTest(plugin));
 

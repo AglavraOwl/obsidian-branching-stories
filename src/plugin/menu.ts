@@ -13,7 +13,7 @@ import {
   setLabel,
   toggleStar,
 } from "./actions";
-import { editAndRegenerate, newNode, regenerate, whereAmI } from "./commands";
+import { editAndRegenerate, newNode, previewContext, regenerate, whereAmI } from "./commands";
 import { showCost } from "./cost";
 import { runConnectionTest } from "./diagnostics";
 import { openFragmentsTable, saveSelectionAsFragment, updateFragmentFormat } from "./fragments";
@@ -45,12 +45,14 @@ export async function showStoryMenu(plugin: BranchingStoriesPlugin): Promise<voi
     });
   }
   add(node ? "New node from here" : "Write the first node", () => newNode(plugin, w));
+  add(node ? "Preview context for the next node" : "Preview context for the first node", () => previewContext(plugin, w, false));
 
   if (node) {
     const info = nodeInfo(plugin, node);
     add("Regenerate", () => regenerate(plugin, node));
     add("Edit prompt and regenerate", () => editAndRegenerate(plugin, node));
 
+    add("Preview context of this node", () => previewContext(plugin, w, true));
     add("Copy prompt of this node", () => copyPrompt(plugin, node));
     add("Open another node in a new tab…", () => openNeighbourInNewTab(plugin, node, node.story));
     add("Go to parent", () => goUp(plugin, node));

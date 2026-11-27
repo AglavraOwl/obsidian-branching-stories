@@ -275,31 +275,36 @@ export function registerCommands(plugin: BranchingStoriesPlugin): void {
   });
 
   // ---- context preview ------------------------------------------------------------------
-  const preview = async (w: Where, ownPrompt: boolean): Promise<void> => {
-    let parent: NodeMeta | null;
-    let prompt: string;
-    if (ownPrompt && w.node) {
-      parent = plugin.store.index.parentOf(w.node) ?? null;
-      prompt = (await plugin.store.load(w.file)).sections.prompt || "(empty prompt)";
-    } else {
-      parent = w.node ?? null;
-      prompt = "(your next prompt goes here)";
-    }
-    const data = await plugin.generation.loadStory(w.storyFolder);
-    const { config, context } = await plugin.generation.prepare(data, parent, prompt, "preview");
-    const lines = [
-      `${PROVIDER_LABEL[config.provider]} · ${config.model || "(no model selected)"}`,
-      `Estimated input: ~${context.totalTokens} tokens`,
-      ...context.parts.map((p) => `  ${p.label}: ~${p.tokens}`),
-    ];
-    if (context.linkedNotes.length) {
-      lines.push("Linked notes included:");
-      for (const n of context.linkedNotes) lines.push(`  ${n.title} (~${n.tokens}) — ${n.source}`);
-    }
-    for (const warn of context.warnings) lines.push(`⚠ ${warn}`);
-    const body = context.messages.map((m) => `===== ${m.role.toUpperCase()} =====\n${m.content}`).join("\n\n");
-    new TextViewModal(app, { title: "Context preview", summary: lines.join("\n"), body }).open();
-  };
-  add("preview-context-new", "Preview context for a new node from here", () => true, (w) => preview(w, false));
-  add("preview-context-own", "Preview context of this node", (w) => !!w.node, (w) => preview(w, true));
+  add("preview-context-new", "Preview context for a new node from here", () => true, (w) => previewContext(plugin, w, false));
+  add("preview-context-own", "Preview context of this node", (w) => !!w.node, (w) => previewContext(plugin, w, true));
+}
+
+/**
+ * Show what would be sent to the model. `ownPrompt`: the context of the open node itself (its
+ * parent's path plus its own prompt); otherwise a new node after the open one.
+ */
+export async function previewContext(plugin: BranchingStoriesPlugin, w: Where, ownPrompt: boolean): Promise<void> {
+  let parent: NodeMeta | null;
+  let prompt: string;
+  if (ownPrompt && w.node) {
+    parent = plugin.store.index.parentOf(w.node) ?? null;
+    prompt = (await plugin.store.load(w.file)).sections.prompt || "(empty prompt)";
+  } else {
+    parent = w.node ?? null;
+    prompt = "(your next prompt goes here)";
+  }
+  const data = await plugin.generation.loadStory(w.storyFolder);
+  const { config, context } = await plugin.generation.prepare(data, parent, prompt, "preview");
+  const lines = [
+    `${PROVIDER_LABEL[config.provider]} · ${config.model || "(no model selected)"}`,
+    `Estimated input: ~${context.totalTokens} tokens`,
+    ...context.parts.map((p) => `  ${p.label}: ~${p.tokens}`),
+  ];
+  if (context.linkedNotes.length) {
+    lines.push("Linked notes included:");
+    for (const n of context.linkedNotes) lines.push(`  ${n.title} (~${n.tokens}) — ${n.source}`);
+  }
+  for (const warn of context.warnings) lines.push(`⚠ ${warn}`);
+  const body = context.messages.map((m) => `===== ${m.role.toUpperCase()} =====\n${m.content}`).join("\n\n");
+  new TextViewModal(plugin.app, { title: "Context preview", summary: lines.join("\n"), body }).open();
 }

@@ -38,6 +38,7 @@ export class PromptModal extends Modal {
   private area: HTMLTextAreaElement | null = null;
   private discard = false;
   private saveTimer: number | null = null;
+  private stopFollowing: (() => void) | null = null;
 
   constructor(
     app: App,
@@ -124,6 +125,29 @@ export class PromptModal extends Modal {
     });
   }
 
+  /**
+   * Phone: the on-screen keyboard is drawn over the window instead of shrinking it, so the lower
+   * part of the (bottom-anchored) prompt window and its text box ended up behind the keyboard.
+   * Measure what the keyboard covers and lift the window above it; the CSS caps its height to the
+   * visible part and lets it scroll. Does nothing when the viewport API is missing.
+   */
+  private followKeyboard(): void {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const apply = (): void => {
+      const covered = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+      this.modalEl.style.setProperty("--bs-kb", `${covered}px`);
+      this.modalEl.style.setProperty("--bs-vh", `${Math.round(vv.height)}px`);
+    };
+    vv.addEventListener("resize", apply);
+    vv.addEventListener("scroll", apply);
+    apply();
+    this.stopFollowing = () => {
+      vv.removeEventListener("resize", apply);
+      vv.removeEventListener("scroll", apply);
+    };
+  }
+
   private saveDraft(): void {
     const key = this.opts.draftKey;
     if (!key || !this.area) return;
@@ -142,6 +166,7 @@ export class PromptModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
     this.modalEl.addClass("bs-prompt-modal");
+    if (Platform.isPhone) this.followKeyboard();
     this.setTitle(this.opts.title);
     if (this.opts.hint) contentEl.createEl("p", { text: this.opts.hint, cls: "setting-item-description" });
 
@@ -246,6 +271,8 @@ export class PromptModal extends Modal {
 
   onClose(): void {
     if (this.saveTimer !== null) window.clearTimeout(this.saveTimer);
+    this.stopFollowing?.();
+    this.stopFollowing = null;
     if (this.discard) clearDraft(this.app, this.opts.draftKey);
     else if (this.result === null) this.saveDraft(); // closed by accident: keep what was typed
     this.area = null;

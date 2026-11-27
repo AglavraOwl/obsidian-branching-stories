@@ -285,6 +285,22 @@
   width: 100%;
 }
 
+/* Phone: keep the prompt window above the on-screen keyboard (--bs-kb and --bs-vh are set from the
+   visual viewport in PromptModal.followKeyboard) and let it scroll when it is taller than that. */
+.is-phone .modal.bs-prompt-modal {
+  margin-bottom: var(--bs-kb, 0px);
+  max-height: calc(var(--bs-vh, 100vh) - 8px);
+  overflow-y: auto;
+}
+
+/* Phone: one line per "reuse a prompt" button, so the text box sits higher. */
+.is-phone .bs-reuse-btn {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 36px;
+}
+
 .bs-draft-note {
   margin-bottom: 6px;
 }
